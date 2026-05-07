@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run sim",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/sim",
+            "args": ["run", "${workspaceFolder}/examples/input.json"],
+            "cwd": "${workspaceFolder}",
+            "MIMode": "gdb"
+        }
+    ]
+}

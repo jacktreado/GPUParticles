@@ -1,0 +1,25 @@
+{
+    "N":   100,
+    "phi": 0.4,
+
+    "delta":     0.95,
+    "Pe":        10.0,
+    "De":        1.0,
+    "R":         1.0,
+    "C":         1e-3,
+    "potential": "soft_sphere",
+
+    "integrator": "euler_maruyama",
+    "max_drift":  0.1,
+    "r_skin":     0.5,
+
+    "t_end":     1.0,
+    "output_dt": 0.05,
+    "dt_init":   1e-3,
+    "abs_tol":   1e-3,
+    "rel_tol":   1e-2,
+
+    "output_file": "trajectory.h5",
+    "init_mode":   "lattice",
+    "seed":        42
+}

@@ -1,0 +1,26 @@
+{
+  "psweep_name": "psweep_2026-05-07_phi_dense",
+  "date": "2026-05-07",
+  "tag": "phi_dense",
+  "note": "phi sweep",
+  "base_json": "/Users/jacktreado/Dresden/Projects/GPUParticles/examples/input.json",
+  "binary": "/Users/jacktreado/Dresden/Projects/GPUParticles/build/sim",
+  "overrides": {
+    "N": 10000
+  },
+  "loop_info": {
+    "phi": {
+      "start": 0.1,
+      "stop": 0.5,
+      "num": 5,
+      "format": "lin"
+    }
+  },
+  "loop_vars": [
+    "phi"
+  ],
+  "n_combos": 5,
+  "start_seed": 0,
+  "num_seeds": 10,
+  "scratch_dir": null
+}

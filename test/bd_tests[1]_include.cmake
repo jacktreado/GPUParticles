@@ -1,0 +1,5 @@
+if(EXISTS "/Users/jacktreado/Dresden/Projects/GPUParticles/test/bd_tests[1]_tests.cmake")
+  include("/Users/jacktreado/Dresden/Projects/GPUParticles/test/bd_tests[1]_tests.cmake")
+else()
+  add_test(bd_tests_NOT_BUILT bd_tests_NOT_BUILT)
+endif()
