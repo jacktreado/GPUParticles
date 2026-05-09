@@ -58,7 +58,7 @@ REPO_ROOT       = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_BASE    = os.path.join(REPO_ROOT, "examples", "input.json")
 BUILD_DIR       = os.path.join(REPO_ROOT, "build")
 DEFAULT_BINARY  = os.path.join(BUILD_DIR, "sim")
-DEFAULT_OUT_DIR = os.path.join(REPO_ROOT, "psweeps")
+DEFAULT_OUT_DIR = "/home/treado/data/GPUParticles/"
 
 
 # ---- What may and may not be swept ------------------------------------------
