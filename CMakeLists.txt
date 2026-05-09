@@ -92,7 +92,7 @@ add_subdirectory(test)
 # ---------------------------------------------------------------------------
 # Interactive GUI (ImGui + GLFW + OpenGL).  Optional — disable with -DBUILD_GUI=OFF.
 # ---------------------------------------------------------------------------
-option(BUILD_GUI "Build the interactive ImGui-based simulation GUI" ON)
+option(BUILD_GUI "Build the interactive ImGui-based simulation GUI" OFF)
 if(BUILD_GUI)
     add_subdirectory(gui)
 endif()
