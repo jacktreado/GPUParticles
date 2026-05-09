@@ -1,10 +1,10 @@
 {
-    "N":   500,
+    "N":   2000,
     "phi": 0.5,
 
     "delta":     0.95,
     "Pe":        100.0,
-    "De":        1.0,
+    "De":        100.0,
     "R":         5.0,
     "C":         1e-8,
     "potential": "wca",
@@ -13,13 +13,13 @@
     "max_drift":  0.1,
     "r_skin":     0.5,
 
-    "t_end":     1000.0,
-    "output_dt": 20.0,
-    "dt_init":   1e-2,
+    "t_end":     5000.0,
+    "output_dt": 50.0,
+    "dt_init":   2e-2,
     "abs_tol":   1e-6,
     "rel_tol":   1e-6,
 
-    "output_file": "trajectory.h5",
+    "output_file": "trajectory_highPe_De0.5.h5",
     "init_mode":   "lattice",
     "seed":        42
 }

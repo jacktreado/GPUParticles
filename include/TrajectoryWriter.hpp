@@ -27,6 +27,11 @@ class Config;
 //     dataset  velocities     shape (N, 2), float64, row-major [vx_i, vy_i]
 //     dataset  orientations   shape (N,),   float64, theta_i in radians
 //     dataset  anchors        shape (N, 2), float64, row-major [ax_i, ay_i]
+//     dataset  forces         shape (N, 2), float64, row-major [fx_i, fy_i]
+//                             — net pair-interaction force on each particle
+//                             (System::fx_/fy_, set by ForceCalculator::compute).
+//                             Active and spring contributions are NOT included;
+//                             those live only inside the integrator step.
 //
 //   /frame_00000001
 //     ...

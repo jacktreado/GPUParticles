@@ -169,6 +169,23 @@ void TrajectoryWriter::writeFrame(const System& sys, const Box& box,
         dset.write(buf.data(), H5::PredType::NATIVE_DOUBLE);
     }
 
+    // Forces dataset: shape (N, 2), each row = [fx_i, fy_i]. These are the
+    // net pair-interaction forces stored on System (written by
+    // ForceCalculator::compute). Callers responsible for ensuring forces are
+    // up to date with current positions before writing — every writeFrame
+    // call site in main.cpp precedes this with forces.compute(sys, box).
+    {
+        std::vector<double> buf(2 * N);
+        for (std::size_t i = 0; i < N; ++i) {
+            buf[2 * i]     = sys.getFx(i);
+            buf[2 * i + 1] = sys.getFy(i);
+        }
+        H5::DataSpace dspace(2, dims2);
+        H5::DataSet   dset = grp.createDataSet(
+            "forces", H5::PredType::NATIVE_DOUBLE, dspace);
+        dset.write(buf.data(), H5::PredType::NATIVE_DOUBLE);
+    }
+
     ++frame_;
 }
 

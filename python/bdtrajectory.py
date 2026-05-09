@@ -24,6 +24,9 @@ HDF5 layout (produced by TrajectoryWriter):
       dset: velocities       shape (N, 2), float64, columns = [vx, vy]
       dset: orientations     shape (N,),   float64, theta in radians
       dset: anchors          shape (N, 2), float64, columns = [ax, ay]
+      dset: forces           shape (N, 2), float64, columns = [fx, fy]
+                             — net pair-interaction force on each particle.
+                             Active and spring contributions are NOT included.
 
     /frame_00000001
       ...
@@ -57,7 +60,7 @@ from matplotlib.collections import PatchCollection
 # ---------------------------------------------------------------------------
 FrameData = namedtuple(
     "FrameData",
-    ["frame", "step", "time", "positions", "velocities", "orientations", "anchors"],
+    ["frame", "step", "time", "positions", "velocities", "orientations", "anchors", "forces"],
 )
 
 
@@ -138,6 +141,7 @@ class BDTrajectory:
                 velocities=self.velocities(i),
                 orientations=self.orientations(i),
                 anchors=self.anchors(i),
+                forces=self.forces(i),
             )
 
     def __getitem__(self, idx: int) -> np.ndarray:
@@ -316,6 +320,28 @@ class BDTrajectory:
         if "anchors" not in grp:
             return None
         return grp["anchors"][:]
+
+    def forces(self, frame: int) -> Optional[np.ndarray]:
+        """
+        Return net pair-interaction forces on each particle for one frame.
+
+        These are the forces written by ForceCalculator::compute on the C++
+        side — i.e. only the pair-potential contribution. Active drive
+        (f0) and anchor-spring forces are evaluated inside the integrator
+        step and are NOT included here.
+
+        Returns None for trajectory files written before forces were
+        added to the writer.
+
+        Returns
+        -------
+        np.ndarray, shape (N, 2), dtype float64, or None
+            Column 0 = fx, column 1 = fy.
+        """
+        grp = self._grp(frame)
+        if "forces" not in grp:
+            return None
+        return grp["forces"][:]
 
     def step(self, frame: int) -> int:
         """Simulation step number for a given frame index."""

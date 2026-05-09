@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 // =============================================================================
 // End-to-end simulation behavior tests
@@ -364,6 +365,152 @@ TEST_F(TrajectoryWriterTest, PositionsValuesCorrect) {
     EXPECT_DOUBLE_EQ(buf[1], 2.5);   // y[0]
     EXPECT_DOUBLE_EQ(buf[2], 3.0);   // x[1]
     EXPECT_DOUBLE_EQ(buf[3], 4.0);   // y[1]
+}
+
+// ---- Forces dataset ----------------------------------------------------------
+// The "forces" dataset must carry the *net pair-interaction force* on each
+// particle — i.e. exactly System::fx_/fy_, which ForceCalculator::compute
+// populates and the integrators only ever read. Three tests:
+//   1. Shape is (N, 2).
+//   2. Raw values written to System round-trip into the file unchanged.
+//   3. After running ForceCalculator on a known 2-particle config, the file
+//      contains the analytically expected pair force (not e.g. a stale or
+//      contaminated buffer).
+
+TEST_F(TrajectoryWriterTest, ForcesDatasetShape) {
+    const std::size_t N = 5;
+    System sys(N);
+    Box    box(10.0);
+    TrajectoryWriter writer(tempPath.string());
+    writer.writeFrame(sys, box, 0);
+    writer.close();
+
+    H5::H5File  file(tempPath.string(), H5F_ACC_RDONLY);
+    H5::Group   grp  = file.openGroup("/frame_00000000");
+    H5::DataSet dset = grp.openDataSet("forces");
+    H5::DataSpace sp = dset.getSpace();
+
+    ASSERT_EQ(sp.getSimpleExtentNdims(), 2);
+    hsize_t dims[2] = {};
+    sp.getSimpleExtentDims(dims);
+    EXPECT_EQ(dims[0], static_cast<hsize_t>(N));
+    EXPECT_EQ(dims[1], static_cast<hsize_t>(2));
+}
+
+TEST_F(TrajectoryWriterTest, ForcesValuesRoundTripFromSystem) {
+    // Whatever sits in System::fx_/fy_ at write time is what ends up in the
+    // file. We bypass ForceCalculator here and stuff arbitrary values into
+    // the force arrays — the writer must not transform them.
+    const std::size_t N = 3;
+    System sys(N);
+    sys.setForce(0,  1.25, -2.5);
+    sys.setForce(1, -3.75,  4.0);
+    sys.setForce(2,  0.0,   7.125);
+    Box box(10.0);
+
+    TrajectoryWriter writer(tempPath.string());
+    writer.writeFrame(sys, box, 0);
+    writer.close();
+
+    H5::H5File  file(tempPath.string(), H5F_ACC_RDONLY);
+    H5::Group   grp  = file.openGroup("/frame_00000000");
+    H5::DataSet dset = grp.openDataSet("forces");
+
+    std::vector<double> buf(2 * N);
+    dset.read(buf.data(), H5::PredType::NATIVE_DOUBLE);
+
+    EXPECT_DOUBLE_EQ(buf[0],  1.25);
+    EXPECT_DOUBLE_EQ(buf[1], -2.5);
+    EXPECT_DOUBLE_EQ(buf[2], -3.75);
+    EXPECT_DOUBLE_EQ(buf[3],  4.0);
+    EXPECT_DOUBLE_EQ(buf[4],  0.0);
+    EXPECT_DOUBLE_EQ(buf[5],  7.125);
+}
+
+TEST_F(TrajectoryWriterTest, ForcesDatasetEqualsForceCalculatorOutput) {
+    // End-to-end: place two particles inside the WCA cutoff, run
+    // ForceCalculator::compute, write the frame, and verify the dataset
+    // matches both (a) what System reports and (b) the analytic pair force.
+    // Two equal-and-opposite particles at separation = sigma:
+    //   F_radial / r = 24 eps / r^2 * sr6 * (2 sr6 - 1) = 24
+    //   so particle 0 (left) gets fx = -24, particle 1 (right) gets fx = +24.
+    const std::size_t N = 2;
+    System sys(N);
+    sys.setPosition(0, 5.0, 5.0);
+    sys.setPosition(1, 6.0, 5.0);   // dx = +1 = sigma
+    Box box(20.0);                  // big enough to ignore PBC
+
+    ForceCalculator fc(1.0, 1.0);
+    fc.compute(sys, box);
+
+    TrajectoryWriter writer(tempPath.string());
+    writer.writeFrame(sys, box, 0);
+    writer.close();
+
+    H5::H5File  file(tempPath.string(), H5F_ACC_RDONLY);
+    H5::Group   grp  = file.openGroup("/frame_00000000");
+    H5::DataSet dset = grp.openDataSet("forces");
+
+    std::vector<double> buf(2 * N);
+    dset.read(buf.data(), H5::PredType::NATIVE_DOUBLE);
+
+    // Matches what ForceCalculator wrote into System.
+    EXPECT_DOUBLE_EQ(buf[0], sys.getFx(0));
+    EXPECT_DOUBLE_EQ(buf[1], sys.getFy(0));
+    EXPECT_DOUBLE_EQ(buf[2], sys.getFx(1));
+    EXPECT_DOUBLE_EQ(buf[3], sys.getFy(1));
+
+    // Matches the analytic WCA pair force at r = sigma.
+    EXPECT_DOUBLE_EQ(buf[0], -24.0);
+    EXPECT_DOUBLE_EQ(buf[1],   0.0);
+    EXPECT_DOUBLE_EQ(buf[2],  24.0);
+    EXPECT_DOUBLE_EQ(buf[3],   0.0);
+
+    // Newton's third law: sum of pair forces is zero.
+    EXPECT_DOUBLE_EQ(buf[0] + buf[2], 0.0);
+    EXPECT_DOUBLE_EQ(buf[1] + buf[3], 0.0);
+}
+
+TEST_F(TrajectoryWriterTest, ForcesDatasetMatchesMultiParticleForceCalculator) {
+    // Generalize: a small 4-particle configuration where every particle has a
+    // nontrivial neighbor sum. After compute(), the dataset must agree with
+    // System element-by-element. This catches any ordering/stride bug in the
+    // (N, 2) row-major flatten.
+    const std::size_t N = 4;
+    System sys(N);
+    sys.setPosition(0, 5.0, 5.0);
+    sys.setPosition(1, 5.9, 5.0);
+    sys.setPosition(2, 5.0, 5.9);
+    sys.setPosition(3, 5.9, 5.9);
+    Box box(20.0);
+
+    ForceCalculator fc(1.0, 1.0);
+    fc.compute(sys, box);
+
+    TrajectoryWriter writer(tempPath.string());
+    writer.writeFrame(sys, box, 0);
+    writer.close();
+
+    H5::H5File  file(tempPath.string(), H5F_ACC_RDONLY);
+    H5::Group   grp  = file.openGroup("/frame_00000000");
+    H5::DataSet dset = grp.openDataSet("forces");
+
+    std::vector<double> buf(2 * N);
+    dset.read(buf.data(), H5::PredType::NATIVE_DOUBLE);
+
+    for (std::size_t i = 0; i < N; ++i) {
+        EXPECT_DOUBLE_EQ(buf[2 * i],     sys.getFx(i)) << "i=" << i;
+        EXPECT_DOUBLE_EQ(buf[2 * i + 1], sys.getFy(i)) << "i=" << i;
+    }
+
+    // Pair forces sum to zero by Newton's third law.
+    double sum_fx = 0.0, sum_fy = 0.0;
+    for (std::size_t i = 0; i < N; ++i) {
+        sum_fx += buf[2 * i];
+        sum_fy += buf[2 * i + 1];
+    }
+    EXPECT_NEAR(sum_fx, 0.0, 1e-12);
+    EXPECT_NEAR(sum_fy, 0.0, 1e-12);
 }
 
 TEST_F(TrajectoryWriterTest, MultipleFramesCreateGroups) {
