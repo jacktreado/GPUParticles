@@ -8,3 +8,5 @@ your function with @register_analysis, and adding the import below.
 
 from . import msd as _msd  # noqa: F401
 from . import force_orientation as _fo  # noqa: F401
+from . import hexatic as _hexatic  # noqa: F401
+from . import clusters as _clusters  # noqa: F401

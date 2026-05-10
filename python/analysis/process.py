@@ -276,7 +276,14 @@ def _run_slurm_map(
     if args.no_submit:
         print(f"\nNot submitted (--no-submit). Submit with: sbatch {slurm_file}")
     else:
-        out = backends.submit_slurm(slurm_file)
+        try:
+            out = backends.submit_slurm(slurm_file)
+        except backends.SbatchError as e:
+            # Print sbatch's own rejection message so the user can see what
+            # SLURM disliked (bad partition, missing account, etc.) without
+            # a Python traceback obscuring it.
+            print(str(e), file=sys.stderr)
+            return 1
         print(f"sbatch: {out}")
     print(
         f"\nWhen the array completes, run reduce:\n"

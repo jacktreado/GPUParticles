@@ -234,14 +234,40 @@ def write_slurm_array(
     return task_file, slurm_file
 
 
+class SbatchError(RuntimeError):
+    """sbatch returned non-zero. Carries the rejected script and sbatch's stderr."""
+
+    def __init__(self, slurm_file: Path, returncode: int, stdout: str, stderr: str):
+        self.slurm_file = slurm_file
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+        msg = (
+            f"sbatch rejected {slurm_file} (exit {returncode}).\n"
+            f"--- sbatch stderr ---\n{stderr.rstrip() or '(empty)'}\n"
+            f"--- sbatch stdout ---\n{stdout.rstrip() or '(empty)'}\n"
+            "Inspect the file directly and try `sbatch <file>` by hand to see "
+            "the same error in its native context."
+        )
+        super().__init__(msg)
+
+
 def submit_slurm(slurm_file: Path) -> str:
-    """sbatch the script; return the captured stdout (contains job id)."""
+    """sbatch the script; return the captured stdout (contains job id).
+
+    On a non-zero sbatch exit, raises SbatchError carrying both stderr and
+    stdout — sbatch reports the *reason* for rejection on stderr (bad
+    partition, missing account, malformed walltime, array size limit, etc.),
+    so we surface it instead of swallowing it inside CalledProcessError.
+    """
     out = subprocess.run(
         ["sbatch", str(slurm_file)],
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
+    if out.returncode != 0:
+        raise SbatchError(slurm_file, out.returncode, out.stdout, out.stderr)
     return out.stdout.strip()
 
 
