@@ -51,9 +51,12 @@ from typing import Iterator, Optional, Sequence, Union
 import h5py
 import matplotlib.animation as animation
 import matplotlib.patches as mpatches
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import PatchCollection
+
+from cluster_utils import ClusterUtils
 
 # ---------------------------------------------------------------------------
 # Named tuple for per-frame data returned by iteration
@@ -403,6 +406,26 @@ class BDTrajectory:
             v = self.velocities(i)
             speeds[i] = np.mean(np.sqrt(v[:, 0]**2 + v[:, 1]**2))
         return speeds
+    
+    def max_cluster_fraction(self, sigma_frac : float = 0.95) -> np.ndarray:
+        """max_cluster_fraction
+        
+        Computes the fraction of the system in the largest cluster for each frame, using the cluster identification algorithm in cluster_utils.py with a distance threshold of sigma_frac * sigma.
+
+        Returns
+        -------
+        np.ndarray
+            _description_
+        """
+        sigma = self.sigma
+        threshold = sigma_frac * sigma
+        fractions = np.empty(self.num_frames)
+        for i in range(self.num_frames):
+            x = self.positions(i)[:, 0]
+            y = self.positions(i)[:, 1]
+            labels, cluster_sizes = ClusterUtils.find_clusters(x, y, threshold, self.frame_box(i)[0])
+            fractions[i] = np.max(cluster_sizes) / len(x)
+        return fractions
 
     # ------------------------------------------------------------------
     # Visualisation: single frame
@@ -426,6 +449,9 @@ class BDTrajectory:
         show_orientations: bool = False,
         orientation_color: Union[str, tuple] = "white",
         orientation_scale: float = 0.4,
+        show_clusters: bool = False,
+        cluster_size_cmap: Optional[plt.Colormap] = None,
+        clus_sigma_frac: float = 1.05,
     ) -> tuple[plt.Figure, plt.Axes]:
         """
         Render one simulation frame as filled circles on a 2-D plane.
@@ -479,7 +505,30 @@ class BDTrajectory:
         if ax is None:
             fig, ax = plt.subplots(figsize=figsize)
         else:
-            fig = ax.get_figure()
+            fig = ax.get_figure()            
+            
+        # determine clusters + colors if requested
+        if show_clusters:
+            x = pos[:, 0]
+            y = pos[:, 1]
+            
+            # color particles by cluster size
+            MAX_CLUSTER_SIZE = x.shape[0]  # max cluster size is total number of particles
+            
+            # get colormap
+            if cluster_size_cmap is None:
+                cluster_size_cmap = plt.get_cmap("inferno")
+            else:
+                cluster_size_cmap = plt.get_cmap(cluster_size_cmap)
+                                
+            # cluster size norm (logarithmic, since cluster sizes can vary widely)                                
+            cluster_size_norm = mcolors.LogNorm(vmin=1, vmax=MAX_CLUSTER_SIZE)
+            
+            # compute cluster sizes using utility function
+            labels, cluster_sizes = ClusterUtils.find_clusters(x, y, clus_sigma_frac * self.sigma, Lx)
+            
+            # get particle colors based on cluster size
+            particle_color = cluster_size_cmap(cluster_size_norm(cluster_sizes[labels]))                        
 
         # One Circle patch per particle, rendered as a single PatchCollection
         # for efficient GPU-accelerated drawing even at large N.
@@ -534,6 +583,13 @@ class BDTrajectory:
             t = self.time(frame_idx)
             title = f"frame {frame_idx}   step {s}   t = {t:.4g}"
         ax.set_title(title, fontsize=10)
+        
+        
+        if show_clusters:
+            # add colorbar
+            sm = plt.cm.ScalarMappable(cmap=cluster_size_cmap, norm=cluster_size_norm)
+            sm.set_array([])
+            fig.colorbar(sm, ax=ax, label="Cluster size")
 
         return fig, ax
 
