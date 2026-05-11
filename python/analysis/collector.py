@@ -139,9 +139,13 @@ class PsweepCollector:
         self._check_seed(seed)
         return self._run_dir(combo_idx) / f"input_seed{seed}.json"
 
-    def processed_path(self, name: str = "processed.h5") -> Path:
-        """Default path for the final processed.h5 at the sweep root."""
-        return self.sweep_dir / name
+    def processed_dir(self) -> Path:
+        """Directory where per-analysis `<name>.h5` files are written."""
+        return self.sweep_dir
+
+    def analysis_output_path(self, analysis_name: str) -> Path:
+        """Path to the reduced `<analysis>.h5` for one registered analysis."""
+        return self.processed_dir() / f"{analysis_name}.h5"
 
     # ------------------------------------------------------------------
     # Parameter access

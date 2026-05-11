@@ -3,7 +3,7 @@ analysis — cluster-side processing pipeline for GPUParticles parameter sweeps.
 
 Public API:
     PsweepCollector  — read-only navigator over a sweep directory.
-    ProcessedSweep   — reader for the final processed.h5.
+    ProcessedSweep   — reader for per-analysis `<name>.h5` reduced outputs.
     register_analysis — decorator that registers an analysis with the framework.
     get_analysis, list_analyses — registry lookup.
 """

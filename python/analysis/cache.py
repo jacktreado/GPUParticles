@@ -344,6 +344,56 @@ def run_and_write(
 # ---------------------------------------------------------------------------
 
 
+def cleanup_caches(
+    cache_paths,
+    analysis_names: list[str],
+) -> tuple[int, int, list[str]]:
+    """
+    Delete the named analysis groups from each cache file.
+
+    If a cache file ends up with no remaining analysis groups, delete the
+    file itself (and its sibling .lock). Used by `process.py reduce
+    --cleanup` after a successful merge into the per-analysis `<name>.h5`.
+
+    Returns (n_groups_deleted, n_files_deleted, warnings).
+    """
+    n_groups = 0
+    n_files = 0
+    warnings_: list[str] = []
+    name_set = set(analysis_names)
+
+    for cp in cache_paths:
+        cp = Path(cp)
+        if not cp.exists():
+            continue
+        try:
+            with h5py.File(cp, "a") as f:
+                for name in analysis_names:
+                    if name in f:
+                        del f[name]
+                        n_groups += 1
+                # Trim analyses_run attr so it stays in sync with what's left.
+                if "analyses_run" in f.attrs:
+                    remaining = [
+                        n for n in _attr_strlist(f.attrs["analyses_run"])
+                        if n not in name_set
+                    ]
+                    if remaining:
+                        f.attrs["analyses_run"] = remaining
+                    else:
+                        del f.attrs["analyses_run"]
+                empty = len(list(f.keys())) == 0
+            if empty:
+                cp.unlink()
+                lock_path = cp.with_suffix(cp.suffix + ".lock")
+                if lock_path.exists():
+                    lock_path.unlink()
+                n_files += 1
+        except OSError as e:
+            warnings_.append(f"{cp}: {e}")
+    return n_groups, n_files, warnings_
+
+
 def read_analysis(
     cache_path: Path, analysis_name: str
 ) -> Optional[dict[str, np.ndarray]]:

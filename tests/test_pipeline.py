@@ -168,27 +168,27 @@ def test_map_only_missing(mini_sweep):
 def test_reduce_writes_processed(mini_sweep):
     coll = PsweepCollector(mini_sweep)
     _run_map(coll, ["msd", "force_orientation"])
-    out = _reduce.reduce_sweep(
+    out_dir = _reduce.reduce_sweep(
         coll,
         analysis_specs=[("msd", {}), ("force_orientation", {})],
         code_git_sha="testsha",
         reduce_args="test",
     )
-    assert out.exists()
+    assert out_dir.is_dir()
 
-    with h5py.File(out, "r") as f:
+    with h5py.File(out_dir / "msd.h5", "r") as f:
         assert "axes" in f
         assert "msd" in f
-        assert "msd" in f["msd"]
         # Shape: grid_shape + (num_seeds,) + tail_shape ; here T=5 frames.
-        assert f["msd/msd/grid"].shape == (3, 2, 5)
-        assert f["msd/msd/mean"].shape == (3, 5)
-        assert f["msd/msd/sem"].shape == (3, 5)
+        assert f["msd/grid"].shape == (3, 2, 5)
+        assert f["msd/mean"].shape == (3, 5)
+        assert f["msd/sem"].shape == (3, 5)
         # n_valid is per-element (matches mean shape) — distinguishes per-frame NaN.
-        assert f["msd/msd/n_valid"].shape == (3, 5)
+        assert f["msd/n_valid"].shape == (3, 5)
+    with h5py.File(out_dir / "force_orientation.h5", "r") as f:
         # Force-orientation has scalar s_mean per trajectory.
-        assert f["force_orientation/s_mean/mean"].shape == (3,)
-        assert f["force_orientation/s_mean/n_valid"].shape == (3,)
+        assert f["s_mean/mean"].shape == (3,)
+        assert f["s_mean/n_valid"].shape == (3,)
 
 
 def test_reduce_partial_sweep_fills_nan(mini_sweep):
@@ -196,16 +196,16 @@ def test_reduce_partial_sweep_fills_nan(mini_sweep):
     _run_map(coll, ["msd"])
     # Wipe one cache so reduce sees a missing seed.
     coll.cache_path(2, 1).unlink()
-    out = _reduce.reduce_sweep(
+    out_dir = _reduce.reduce_sweep(
         coll,
         analysis_specs=[("msd", {})],
         code_git_sha="testsha",
     )
-    with h5py.File(out, "r") as f:
+    with h5py.File(out_dir / "msd.h5", "r") as f:
         # n_valid has shape (3 combos, 5 frames). Sum over the frame axis
         # (or pick any frame — they're all equal here) tells you how many
         # seeds contributed.
-        n_valid = f["msd/msd/n_valid"][()]
+        n_valid = f["msd/n_valid"][()]
         assert n_valid[0, 0] == 2
         assert n_valid[1, 0] == 2
         assert n_valid[2, 0] == 1  # one seed missing

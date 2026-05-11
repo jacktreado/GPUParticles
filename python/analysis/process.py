@@ -4,10 +4,13 @@ process.py — CLI for the GPUParticles cluster-side analysis pipeline.
 
 Subcommands:
     map     <sweep_dir> --analyses ... [--backend local|slurm] ...
-    reduce  <sweep_dir> --analyses ... [--output processed.h5]
+    reduce  <sweep_dir> --analyses ... [--output-dir DIR]
     one     <sweep_dir> <combo_idx> <seed> --analyses ...   (SLURM array entry)
     status  <sweep_dir> [--analyses ...]
     clean   <sweep_dir> [--analyses ...] [--stale-only]
+
+Each analysis writes its reduced output to `<sweep_dir>/<analysis>.h5`
+(or under `--output-dir` when supplied).
 
 See the plan doc in /Users/jacktreado/.claude/plans for the design rationale.
 """
@@ -98,6 +101,16 @@ def _make_parser() -> argparse.ArgumentParser:
     )
     m.add_argument("--no-reduce", action="store_true")
     m.add_argument("--reduce-anyway", action="store_true")
+    m.add_argument(
+        "--cleanup",
+        action="store_true",
+        help=(
+            "After a successful reduce, delete the per-trajectory cache groups "
+            "for the analyses just reduced. Cache files with no remaining "
+            "analyses are unlinked. Ignored when --no-reduce is set or reduce "
+            "is skipped due to errors."
+        ),
+    )
     m.add_argument("--dry-run", action="store_true")
     # SLURM-only options:
     m.add_argument("--partition")
@@ -111,10 +124,29 @@ def _make_parser() -> argparse.ArgumentParser:
     )
 
     # --- reduce ---
-    r = sub.add_parser("reduce", help="Combine per-trajectory caches into processed.h5.")
+    r = sub.add_parser(
+        "reduce",
+        help="Combine per-trajectory caches into one <analysis>.h5 per analysis.",
+    )
     r.add_argument("sweep_dir")
     r.add_argument("--analyses", required=True)
-    r.add_argument("--output", default=None)
+    r.add_argument(
+        "--output-dir",
+        default=None,
+        help=(
+            "Directory to write the per-analysis <name>.h5 files. "
+            "Defaults to the sweep directory."
+        ),
+    )
+    r.add_argument(
+        "--cleanup",
+        action="store_true",
+        help=(
+            "After writing the per-analysis files, delete the per-trajectory "
+            "cache groups for the analyses just reduced. Cache files with no "
+            "remaining analyses are unlinked."
+        ),
+    )
 
     # --- one ---
     o = sub.add_parser(
@@ -191,6 +223,11 @@ def cmd_map(args: argparse.Namespace) -> int:
 
     if args.backend == "local":
         return _run_local_map(coll, tasks, analysis_specs, args, code_sha)
+    if args.cleanup:
+        print(
+            "Note: --cleanup is ignored on --backend slurm; pass it to "
+            "`process.py reduce ... --cleanup` after the array completes."
+        )
     return _run_slurm_map(coll, tasks, args)
 
 
@@ -244,13 +281,15 @@ def _run_local_map(
         )
         return 0 if n_err == 0 else 1
 
-    out_path = _reduce.reduce_sweep(
+    out_dir = _reduce.reduce_sweep(
         coll,
         analysis_specs=analysis_specs,
         code_git_sha=code_sha,
         reduce_args=" ".join(sys.argv),
     )
-    print(f"Reduce wrote: {out_path}")
+    _print_reduce_outputs(out_dir, analysis_specs)
+    if args.cleanup:
+        _cleanup_after_reduce(coll, analysis_specs)
     return 0 if n_err == 0 else 1
 
 
@@ -317,14 +356,16 @@ def cmd_one(args: argparse.Namespace) -> int:
 def cmd_reduce(args: argparse.Namespace) -> int:
     coll = PsweepCollector(args.sweep_dir)
     analysis_specs = backends.parse_analyses_arg(args.analyses)
-    out_path = _reduce.reduce_sweep(
+    out_dir = _reduce.reduce_sweep(
         coll,
         analysis_specs=analysis_specs,
-        output_path=Path(args.output) if args.output else None,
+        output_dir=Path(args.output_dir) if args.output_dir else None,
         code_git_sha=_git_sha(_HERE),
         reduce_args=" ".join(sys.argv),
     )
-    print(f"Reduce wrote: {out_path}")
+    _print_reduce_outputs(out_dir, analysis_specs)
+    if args.cleanup:
+        _cleanup_after_reduce(coll, analysis_specs)
     return 0
 
 
@@ -420,6 +461,33 @@ def _git_sha(path: Path) -> str:
         return out.stdout.strip()
     except FileNotFoundError:
         return ""
+
+
+def _print_reduce_outputs(
+    out_dir: Path,
+    analysis_specs: list[tuple[str, dict[str, Any]]],
+) -> None:
+    print(f"Reduce wrote to {out_dir}:")
+    for name, _ in analysis_specs:
+        print(f"  {name}.h5")
+
+
+def _cleanup_after_reduce(
+    coll: PsweepCollector,
+    analysis_specs: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """Delete per-trajectory cache groups for the analyses just reduced."""
+    names = [n for n, _ in analysis_specs]
+    cache_paths = [coll.cache_path(ci, s) for ci, s, _ in coll]
+    n_groups, n_files, warns = _cache.cleanup_caches(cache_paths, names)
+    print(
+        f"Cleanup: removed {n_groups} cache group(s) across "
+        f"{len(cache_paths)} cache file(s); unlinked {n_files} empty cache file(s)."
+    )
+    for w in warns[:20]:
+        print(f"  warning: {w}")
+    if len(warns) > 20:
+        print(f"  ... ({len(warns) - 20} more)")
 
 
 def _collect_incomplete_pairs(
