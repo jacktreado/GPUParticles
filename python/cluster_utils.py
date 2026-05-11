@@ -1,6 +1,4 @@
 import numpy as np
-from shapely.geometry import MultiPolygon, Polygon
-from shapely.ops import unary_union
 from scipy.spatial import Delaunay
 
 class ClusterUtils:
