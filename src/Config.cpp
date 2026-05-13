@@ -140,9 +140,12 @@ void Config::recompute() {
     gamma = gamma_hat / (1.0 + R);
     gamma_a = R * gamma;
 
+    // set epsilon based off of gamma and tau_elastic
+    epsilon = (gamma * (sigma * sigma)) / tau_elastic;
+
     // 2D packing: phi = N * pi * sigma^2 / (4 L^2).
     L = std::sqrt(static_cast<double>(N) * pi() * sigma * sigma / (4.0 * phi));
-
+    
     // Thermal energy.
     kT = C * epsilon;
 
@@ -153,7 +156,7 @@ void Config::recompute() {
     // Degenerate when there's no active drive (f0 = 0) or no persistence
     // requested (Pe = 0): no rotational diffusion to model.
     if (f0 > 0.0 && Pe > 0.0) {
-        tau_theta = Pe * gamma * sigma / f0;
+        tau_theta = (Pe * gamma_hat * sigma) / f0;
     } else {
         tau_theta = 0.0;
     }

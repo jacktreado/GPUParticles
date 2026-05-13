@@ -82,13 +82,15 @@ public:
     // every existing reader (ForceCalculator, Integrator, main.cpp, tests)
     // works without change.
     double sigma   = 1.0;
-    double epsilon = 1.0;
+    // double epsilon = 1.0;
+    double tau_elastic = 1.0;
     double gamma_hat = 1.0;
     
     // ---- Derived microscopic parameters (set by recompute()) ----------------
+    double epsilon   = 1.0;     // from delta + potential via f0ForOverlap
     double kT        = 0.0;     // = C * epsilon
     double f0        = 0.0;     // from delta + potential via f0ForOverlap
-    double tau_theta = 0.0;     // = Pe * gamma * sigma / f0
+    double tau_theta = 0.0;     // = Pe * gamma_hat * sigma / f0
     double gamma_a   = 0.5;     // = gamma_hat - gamma
     double gamma     = 0.5;     // = gamma_hat - gamma_a
     double k_a       = 0.0;     // = gamma_a / (De * tau_theta)
