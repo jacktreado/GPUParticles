@@ -63,7 +63,7 @@ target_link_libraries(brownian_lib PUBLIC
 target_include_directories(brownian_lib PUBLIC ${HDF5_INCLUDE_DIRS})
 
 target_compile_options(brownian_lib PRIVATE
-    -Wall -Wextra -Wpedantic
+    -Wall -Wextra -Wpedantic -O3
 )
 
 # ---------------------------------------------------------------------------
@@ -71,7 +71,7 @@ target_compile_options(brownian_lib PRIVATE
 # ---------------------------------------------------------------------------
 add_executable(sim main.cpp)
 target_link_libraries(sim PRIVATE brownian_lib)
-target_compile_options(sim PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(sim PRIVATE -Wall -Wextra -Wpedantic -O3)
 
 # ---------------------------------------------------------------------------
 # Tests (Google Test)

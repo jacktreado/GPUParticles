@@ -136,6 +136,10 @@ Config Config::fromFile(const std::string& path) {
 }
 
 void Config::recompute() {
+    // Anchor friction: gamma_a / gamma = R.
+    gamma = gamma_hat / (1.0 + R);
+    gamma_a = R * gamma;
+
     // 2D packing: phi = N * pi * sigma^2 / (4 L^2).
     L = std::sqrt(static_cast<double>(N) * pi() * sigma * sigma / (4.0 * phi));
 
@@ -153,9 +157,6 @@ void Config::recompute() {
     } else {
         tau_theta = 0.0;
     }
-
-    // Anchor friction: gamma_a / gamma = R.
-    gamma_a = R * gamma;
 
     // Anchor stiffness from De = (gamma_a / k_a) / tau_theta.
     // Degenerate when there's no persistence (tau_theta = 0) or De = 0
@@ -182,10 +183,11 @@ void Config::print() const {
         << "  --- working units (frozen) ---\n"
         << "  sigma        = " << sigma << "\n"
         << "  epsilon      = " << epsilon << "\n"
-        << "  gamma        = " << gamma << "\n"
+        << "  gamma_hat    = " << gamma_hat << "\n"
         << "  --- derived ---\n"
         << "  L            = " << L << "\n"
         << "  kT           = " << kT << "\n"
+        << "  gamma        = " << gamma << "\n"
         << "  f0           = " << f0 << (f0 == 0.0 ? " (passive)\n" : "\n")
         << "  tau_theta    = " << tau_theta
         << (tau_theta == 0.0 ? " (no rotational diffusion)\n" : "\n")
