@@ -81,7 +81,10 @@ SWEEPABLE = {
 }
 
 # Cast to int when applying the swept value back into the JSON.
-INT_PARAMS = {"N"}
+INT_PARAMS = {"N", "n_corr_steps"}
+
+# Boolean overrides: parsed from "true"/"false"/"1"/"0" instead of as floats.
+BOOL_PARAMS = {"compute_correlations", "compute_contact_durations"}
 
 # Why each non-sweepable JSON field is rejected as a loop variable.
 NON_SWEEPABLE = {
@@ -97,6 +100,11 @@ NON_SWEEPABLE = {
     "r_skin":      "a cell-list buffer, not a physical parameter",
     "t_end":       "a simulation duration, not a physical parameter",
     "output_dt":   "an output cadence, not a physical parameter",
+    "compute_correlations": "an output flag, not a physical parameter",
+    "corr_dt_max":          "a correlation-grid knob, not a physical parameter",
+    "n_corr_steps":         "a correlation-grid knob, not a physical parameter",
+    "t_warm":               "a measurement-window knob, not a physical parameter",
+    "compute_contact_durations": "an output flag, not a physical parameter",
 }
 
 # Every JSON key the script knows about. Used to validate --<key> overrides.
@@ -232,6 +240,17 @@ def parse_overrides(unknown):
             overrides[key] = raw
         elif key in INT_PARAMS:
             overrides[key] = int(round(float(raw)))
+        elif key in BOOL_PARAMS:
+            low = raw.lower()
+            if low in ("true", "1", "yes", "on"):
+                overrides[key] = True
+            elif low in ("false", "0", "no", "off"):
+                overrides[key] = False
+            else:
+                raise ValueError(
+                    f'Invalid bool for --{key}: "{raw}" '
+                    "(use true/false, 1/0, yes/no, or on/off)"
+                )
         else:
             overrides[key] = float(raw)
 

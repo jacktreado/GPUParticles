@@ -8,6 +8,8 @@
 class System;
 class Box;
 class Config;
+class CorrelationAccumulator;
+class ContactDurationAccumulator;
 
 // =============================================================================
 // TrajectoryWriter
@@ -67,6 +69,41 @@ public:
     void writeFrame(const System& sys, const Box& box, std::size_t step) {
         writeFrame(sys, box, step, 0.0);
     }
+
+    // Write the final normalized correlation functions C_vn(tau), C_Fn(tau),
+    // and C_vv(tau) into a /correlations group at the root. Call once after
+    // the time loop; the accumulator's running sums and per-lag contribution
+    // counts are read and normalized inline (NaN where count == 0).
+    //
+    // Layout:
+    //   /correlations
+    //     attr  corr_dt        : double
+    //     attr  corr_dt_max    : double
+    //     attr  n_corr_steps   : uint64
+    //     attr  t_warm         : double
+    //     attr  n_samples      : uint64    (snapshots taken since t_warm)
+    //     dataset tau   (n_corr_steps,) float64    tau_k = k * corr_dt
+    //     dataset C_vn  (n_corr_steps,) float64    <v . n_past>
+    //     dataset C_Fn  (n_corr_steps,) float64    <F . n_past>
+    //     dataset C_vv  (n_corr_steps,) float64    <v . v_past>
+    //     dataset count (n_corr_steps,) uint64     contribution count per lag
+    void writeCorrelations(const CorrelationAccumulator& corr, double t_warm);
+
+    // Write the streaming statistics of pair contact durations into a
+    // /contact_durations group at the root. Attribute-only group, no datasets.
+    //
+    // Layout:
+    //   /contact_durations
+    //     attr  contact_cutoff           : double
+    //     attr  count                    : uint64  (completed contacts)
+    //     attr  mean                     : double  (NaN if count == 0)
+    //     attr  stddev                   : double  (sample, NaN if count < 2)
+    //     attr  min                      : double
+    //     attr  max                      : double
+    //     attr  in_progress              : uint64  (active at sim end)
+    //     attr  in_progress_sum_duration : double
+    //     attr  n_samples                : uint64  (times sample() was called)
+    void writeContactDurations(const ContactDurationAccumulator& cd);
 
     void close();
 

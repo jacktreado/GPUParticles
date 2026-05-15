@@ -49,6 +49,8 @@ add_library(brownian_lib
     src/Initializer.cpp
     src/Config.cpp
     src/TrajectoryWriter.cpp
+    src/CorrelationAccumulator.cpp
+    src/ContactDurationAccumulator.cpp
 )
 
 target_include_directories(brownian_lib PUBLIC

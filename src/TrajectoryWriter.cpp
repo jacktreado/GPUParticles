@@ -2,9 +2,13 @@
 
 #include "Box.hpp"
 #include "Config.hpp"
+#include "ContactDurationAccumulator.hpp"
+#include "CorrelationAccumulator.hpp"
 #include "System.hpp"
 
+#include <cmath>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -187,6 +191,98 @@ void TrajectoryWriter::writeFrame(const System& sys, const Box& box,
     }
 
     ++frame_;
+}
+
+void TrajectoryWriter::writeCorrelations(const CorrelationAccumulator& corr,
+                                         double t_warm) {
+    if (!file_) return;
+
+    const std::size_t n_lags    = corr.nLags();
+    const double      corr_dt   = corr.corrDt();
+    const std::size_t n_samples = corr.numSamplesTaken();
+    const double      dt_max    = corr_dt * static_cast<double>(n_lags);
+
+    H5::Group grp = file_->createGroup("/correlations");
+
+    writeDoubleAttr(grp, "corr_dt",      corr_dt);
+    writeDoubleAttr(grp, "corr_dt_max",  dt_max);
+    writeUInt64Attr(grp, "n_corr_steps", static_cast<std::uint64_t>(n_lags));
+    writeDoubleAttr(grp, "t_warm",       t_warm);
+    writeUInt64Attr(grp, "n_samples",    static_cast<std::uint64_t>(n_samples));
+
+    const hsize_t dims1[1] = {static_cast<hsize_t>(n_lags)};
+
+    const auto& sum_vn = corr.sumVn();
+    const auto& sum_Fn = corr.sumFn();
+    const auto& sum_vv = corr.sumVv();
+    const auto& count  = corr.count();
+
+    std::vector<double> tau(n_lags);
+    std::vector<double> C_vn(n_lags);
+    std::vector<double> C_Fn(n_lags);
+    std::vector<double> C_vv(n_lags);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (std::size_t k = 0; k < n_lags; ++k) {
+        tau[k]  = static_cast<double>(k) * corr_dt;
+        if (count[k] == 0) {
+            C_vn[k] = nan;
+            C_Fn[k] = nan;
+            C_vv[k] = nan;
+        } else {
+            const double inv = 1.0 / static_cast<double>(count[k]);
+            C_vn[k] = sum_vn[k] * inv;
+            C_Fn[k] = sum_Fn[k] * inv;
+            C_vv[k] = sum_vv[k] * inv;
+        }
+    }
+
+    {
+        H5::DataSpace dspace(1, dims1);
+        H5::DataSet   dset = grp.createDataSet(
+            "tau", H5::PredType::NATIVE_DOUBLE, dspace);
+        dset.write(tau.data(), H5::PredType::NATIVE_DOUBLE);
+    }
+    {
+        H5::DataSpace dspace(1, dims1);
+        H5::DataSet   dset = grp.createDataSet(
+            "C_vn", H5::PredType::NATIVE_DOUBLE, dspace);
+        dset.write(C_vn.data(), H5::PredType::NATIVE_DOUBLE);
+    }
+    {
+        H5::DataSpace dspace(1, dims1);
+        H5::DataSet   dset = grp.createDataSet(
+            "C_Fn", H5::PredType::NATIVE_DOUBLE, dspace);
+        dset.write(C_Fn.data(), H5::PredType::NATIVE_DOUBLE);
+    }
+    {
+        H5::DataSpace dspace(1, dims1);
+        H5::DataSet   dset = grp.createDataSet(
+            "C_vv", H5::PredType::NATIVE_DOUBLE, dspace);
+        dset.write(C_vv.data(), H5::PredType::NATIVE_DOUBLE);
+    }
+    {
+        H5::DataSpace dspace(1, dims1);
+        H5::DataSet   dset = grp.createDataSet(
+            "count", H5::PredType::NATIVE_UINT64, dspace);
+        dset.write(count.data(), H5::PredType::NATIVE_UINT64);
+    }
+}
+
+void TrajectoryWriter::writeContactDurations(const ContactDurationAccumulator& cd) {
+    if (!file_) return;
+
+    H5::Group grp = file_->createGroup("/contact_durations");
+
+    writeDoubleAttr(grp, "contact_cutoff",           cd.contactCutoff());
+    writeUInt64Attr(grp, "count",                    cd.count());
+    writeDoubleAttr(grp, "mean",                     cd.mean());
+    writeDoubleAttr(grp, "stddev",                   cd.stddev());
+    writeDoubleAttr(grp, "min",                      cd.min());
+    writeDoubleAttr(grp, "max",                      cd.max());
+    writeUInt64Attr(grp, "in_progress",
+                    static_cast<std::uint64_t>(cd.inProgressCount()));
+    writeDoubleAttr(grp, "in_progress_sum_duration", cd.inProgressSumDuration());
+    writeUInt64Attr(grp, "n_samples",                cd.sampleCount());
 }
 
 void TrajectoryWriter::close() {

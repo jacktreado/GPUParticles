@@ -119,6 +119,29 @@ Config Config::fromFile(const std::string& path) {
     if (j.contains("init_mode"))   cfg.init_mode   = j["init_mode"].get<std::string>();
     if (j.contains("seed"))        cfg.seed        = j["seed"].get<std::uint64_t>();
 
+    // ---- On-the-fly correlation functions -----------------------------------
+    if (j.contains("compute_correlations"))
+        cfg.compute_correlations = j["compute_correlations"].get<bool>();
+    if (j.contains("corr_dt_max"))  cfg.corr_dt_max  = j["corr_dt_max"].get<double>();
+    if (j.contains("n_corr_steps")) cfg.n_corr_steps = j["n_corr_steps"].get<std::size_t>();
+    if (j.contains("t_warm"))       cfg.t_warm       = j["t_warm"].get<double>();
+    if (j.contains("compute_contact_durations"))
+        cfg.compute_contact_durations = j["compute_contact_durations"].get<bool>();
+
+    if (cfg.compute_correlations) {
+        if (cfg.n_corr_steps == 0)
+            throw std::runtime_error(
+                "Config: n_corr_steps must be > 0 when compute_correlations is true");
+        if (cfg.corr_dt_max <= 0.0)
+            throw std::runtime_error(
+                "Config: corr_dt_max must be > 0 when compute_correlations is true");
+        if (cfg.t_warm < 0.0)
+            throw std::runtime_error("Config: t_warm must be >= 0");
+        if (cfg.corr_dt_max > cfg.t_end - cfg.t_warm)
+            throw std::runtime_error(
+                "Config: corr_dt_max must be <= (t_end - t_warm)");
+    }
+
     if (cfg.max_drift < 0.0) throw std::runtime_error("Config: max_drift must be >= 0 (0 disables the cap)");
     if (cfg.r_skin    < 0.0) throw std::runtime_error("Config: r_skin must be >= 0");
     if (cfg.t_end     <= 0.0) throw std::runtime_error("Config: t_end must be > 0");
@@ -218,4 +241,20 @@ void Config::print() const {
         << "  output_file  = " << output_file << "\n"
         << "  init_mode    = " << init_mode << "\n"
         << "  seed         = " << seed << "\n";
+    if (compute_correlations) {
+        const double corr_dt = (n_corr_steps > 0)
+            ? (corr_dt_max / static_cast<double>(n_corr_steps)) : 0.0;
+        std::cout
+            << "  --- on-the-fly correlations ---\n"
+            << "  corr_dt_max  = " << corr_dt_max << "\n"
+            << "  n_corr_steps = " << n_corr_steps << "\n"
+            << "  corr_dt      = " << corr_dt << "\n"
+            << "  t_warm       = " << t_warm << "\n";
+    }
+    if (compute_contact_durations) {
+        std::cout
+            << "  --- contact-duration stats ---\n"
+            << "  compute_contact_durations = true (cutoff = sigma = "
+            << sigma << ")\n";
+    }
 }

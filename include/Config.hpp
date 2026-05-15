@@ -119,6 +119,27 @@ public:
     std::string init_mode    = "lattice";   // "lattice" or "random"
     std::uint64_t seed       = 12345;
 
+    // ---- On-the-fly correlation functions -----------------------------------
+    // When enabled, the runner samples the system on a uniform grid of spacing
+    // corr_dt = corr_dt_max / n_corr_steps and accumulates two ensemble-averaged
+    // cross-correlations on a grid tau_k = k * corr_dt, k = 0..n_corr_steps-1:
+    //   C_vn(tau) = < v_i(t0+tau) . n_hat_i(t0) >  (velocity x past orientation)
+    //   C_Fn(tau) = < F_i(t0+tau) . n_hat_i(t0) >  (pair force x past orientation)
+    // Only orientations are buffered (O(N * n_corr_steps) doubles); velocities
+    // and forces are dotted against the buffer at sample time. Accumulation
+    // begins once t > t_warm. Disabled by default.
+    bool          compute_correlations = false;
+    double        corr_dt_max          = 0.0;
+    std::size_t   n_corr_steps         = 0;
+    double        t_warm               = 0.0;
+
+    // ---- On-the-fly contact-duration statistics -----------------------------
+    // When enabled, every integrator step the runner samples pair contacts
+    // (r_ij < sigma) and tracks per-pair running durations. Completed contacts
+    // (broken bonds) feed a Welford streaming accumulator for mean and sample
+    // stddev; no per-contact list is stored. Negligible memory.
+    bool          compute_contact_durations = false;
+
     // ---- Methods ------------------------------------------------------------
     static Config fromFile(const std::string& path);
 

@@ -26,6 +26,8 @@
 #include "Box.hpp"
 #include "CellList.hpp"
 #include "Config.hpp"
+#include "ContactDurationAccumulator.hpp"
+#include "CorrelationAccumulator.hpp"
 #include "ForceCalculator.hpp"
 #include "HeunIntegrator.hpp"
 #include "Initializer.hpp"
@@ -37,6 +39,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -61,7 +65,9 @@ int cmdInfo(const std::string& jsonPath) {
 // so frames land exactly on multiples of output_dt; the cap is restored after.
 void runAdaptive(const Config& cfg, System& sys, Box& box,
                  ForceCalculator& forces, RandomGenerator& rng,
-                 TrajectoryWriter& writer) {
+                 TrajectoryWriter& writer,
+                 CorrelationAccumulator* corr, double corr_dt,
+                 ContactDurationAccumulator* contacts) {
     AdaptiveIntegrator integ(cfg.gamma, cfg.abs_tol, cfg.rel_tol, cfg.dt_init);
     integ.setMacroDt(cfg.dt_init);
     integ.setKBT(cfg.kT);
@@ -79,11 +85,14 @@ void runAdaptive(const Config& cfg, System& sys, Box& box,
     const double     macro_dt   = cfg.dt_init;
     double           t          = 0.0;
     double           next_output= cfg.output_dt;
+    double           next_corr_sample = corr
+        ? std::max(cfg.t_warm, corr_dt)
+        : std::numeric_limits<double>::infinity();
     std::size_t      n_steps    = 0;
     std::size_t      n_frames   = 1;
 
     while (t < cfg.t_end * (1.0 - rel_eps)) {
-        const double next_target = std::min(next_output, cfg.t_end);
+        const double next_target = std::min({next_output, next_corr_sample, cfg.t_end});
         const double remaining   = next_target - t;
         const double step_dt     = std::min(macro_dt, remaining);
         integ.setMacroDt(step_dt);
@@ -92,7 +101,19 @@ void runAdaptive(const Config& cfg, System& sys, Box& box,
         t += dt_taken;
         ++n_steps;
 
-        if (t >= next_output * (1.0 - rel_eps)) {
+        if (contacts) contacts->sample(sys, box, dt_taken);
+
+        const bool need_corr  = corr && t >= cfg.t_warm * (1.0 - rel_eps)
+                                     && t >= next_corr_sample * (1.0 - rel_eps);
+        const bool need_write = t >= next_output * (1.0 - rel_eps);
+
+        if (need_corr) {
+            forces.compute(sys, box);
+            corr->sample(sys);
+            next_corr_sample += corr_dt;
+        }
+
+        if (need_write) {
             forces.compute(sys, box);
             writer.writeFrame(sys, box, n_steps, t);
             const double U = forces.computeEnergy(sys, box);
@@ -117,7 +138,9 @@ void runAdaptive(const Config& cfg, System& sys, Box& box,
 // the EM runner.
 void runHeun(const Config& cfg, System& sys, Box& box,
              ForceCalculator& forces, RandomGenerator& rng,
-             TrajectoryWriter& writer) {
+             TrajectoryWriter& writer,
+             CorrelationAccumulator* corr, double corr_dt,
+             ContactDurationAccumulator* contacts) {
     HeunIntegrator integ(cfg.gamma, cfg.dt_init);
     integ.setKBT(cfg.kT);
     integ.setActiveForce(cfg.f0);
@@ -143,11 +166,14 @@ void runHeun(const Config& cfg, System& sys, Box& box,
     double           current_dt = dt_full;
     double           t          = 0.0;
     double           next_output= cfg.output_dt;
+    double           next_corr_sample = corr
+        ? std::max(cfg.t_warm, corr_dt)
+        : std::numeric_limits<double>::infinity();
     std::size_t      n_steps    = 0;
     std::size_t      n_frames   = 1;
 
     while (t < cfg.t_end * (1.0 - rel_eps)) {
-        const double next_target = std::min(next_output, cfg.t_end);
+        const double next_target = std::min({next_output, next_corr_sample, cfg.t_end});
         const double remaining   = next_target - t;
         const double step_dt     = std::min(dt_full, remaining);
         if (step_dt != current_dt) {
@@ -162,7 +188,19 @@ void runHeun(const Config& cfg, System& sys, Box& box,
         t += step_dt;
         ++n_steps;
 
-        if (t >= next_output * (1.0 - rel_eps)) {
+        if (contacts) contacts->sample(sys, box, step_dt);
+
+        const bool need_corr  = corr && t >= cfg.t_warm * (1.0 - rel_eps)
+                                     && t >= next_corr_sample * (1.0 - rel_eps);
+        const bool need_write = t >= next_output * (1.0 - rel_eps);
+
+        if (need_corr) {
+            forces.compute(sys, box);
+            corr->sample(sys);
+            next_corr_sample += corr_dt;
+        }
+
+        if (need_write) {
             forces.compute(sys, box);    // brute force for the energy diagnostic
             writer.writeFrame(sys, box, n_steps, t);
             const double U = forces.computeEnergy(sys, box);
@@ -187,7 +225,9 @@ void runHeun(const Config& cfg, System& sys, Box& box,
 // few sqrts per call).
 void runEulerMaruyama(const Config& cfg, System& sys, Box& box,
                       ForceCalculator& forces, RandomGenerator& rng,
-                      TrajectoryWriter& writer) {
+                      TrajectoryWriter& writer,
+                      CorrelationAccumulator* corr, double corr_dt,
+                      ContactDurationAccumulator* contacts) {
     Integrator integ(cfg.gamma, cfg.dt_init);
     integ.setKBT(cfg.kT);
     integ.setActiveForce(cfg.f0);
@@ -222,11 +262,14 @@ void runEulerMaruyama(const Config& cfg, System& sys, Box& box,
     double           current_dt = dt_full;
     double           t          = 0.0;
     double           next_output= cfg.output_dt;
+    double           next_corr_sample = corr
+        ? std::max(cfg.t_warm, corr_dt)
+        : std::numeric_limits<double>::infinity();
     std::size_t      n_steps    = 0;
     std::size_t      n_frames   = 1;
 
     while (t < cfg.t_end * (1.0 - rel_eps)) {
-        const double next_target = std::min(next_output, cfg.t_end);
+        const double next_target = std::min({next_output, next_corr_sample, cfg.t_end});
         const double remaining   = next_target - t;
         const double step_dt     = std::min(dt_full, remaining);
         if (step_dt != current_dt) {
@@ -239,7 +282,19 @@ void runEulerMaruyama(const Config& cfg, System& sys, Box& box,
         t += step_dt;
         ++n_steps;
 
-        if (t >= next_output * (1.0 - rel_eps)) {
+        if (contacts) contacts->sample(sys, box, step_dt);
+
+        const bool need_corr  = corr && t >= cfg.t_warm * (1.0 - rel_eps)
+                                     && t >= next_corr_sample * (1.0 - rel_eps);
+        const bool need_write = t >= next_output * (1.0 - rel_eps);
+
+        if (need_corr) {
+            forces.compute(sys, box);
+            corr->sample(sys);
+            next_corr_sample += corr_dt;
+        }
+
+        if (need_write) {
             forces.compute(sys, box);    // brute force for the energy diagnostic
             writer.writeFrame(sys, box, n_steps, t);
             const double U = forces.computeEnergy(sys, box);
@@ -295,17 +350,58 @@ int cmdRun(const std::string& jsonPath) {
         << (cfg.f0 > 0.0 ? ("f0=" + std::to_string(cfg.f0) + "  tau_theta=" +
                             std::to_string(cfg.tau_theta) + "\n") : "");
 
+    // ---- Optional on-the-fly correlations ----------------------------------
+    std::unique_ptr<CorrelationAccumulator> corr;
+    double corr_dt = 0.0;
+    if (cfg.compute_correlations) {
+        corr_dt = cfg.corr_dt_max / static_cast<double>(cfg.n_corr_steps);
+        corr = std::make_unique<CorrelationAccumulator>(
+            cfg.N, cfg.n_corr_steps, corr_dt);
+        std::cout << "On-the-fly correlations ENABLED: "
+                  << "n_corr_steps=" << cfg.n_corr_steps
+                  << ", corr_dt=" << corr_dt
+                  << ", corr_dt_max=" << cfg.corr_dt_max
+                  << ", t_warm=" << cfg.t_warm << "\n";
+    }
+
+    // ---- Optional on-the-fly contact-duration statistics -------------------
+    std::unique_ptr<ContactDurationAccumulator> contacts;
+    if (cfg.compute_contact_durations) {
+        contacts = std::make_unique<ContactDurationAccumulator>(
+            cfg.N, cfg.sigma, cfg.r_skin, box);
+        std::cout << "Contact-duration tracking ENABLED "
+                  << "(contact_cutoff = sigma = " << cfg.sigma << ")\n";
+    }
+
     // ---- Time loop ----------------------------------------------------------
     switch (cfg.integrator) {
         case IntegratorMethod::EulerMaruyama:
-            runEulerMaruyama(cfg, sys, box, forces, rng, writer);
+            runEulerMaruyama(cfg, sys, box, forces, rng, writer,
+                             corr.get(), corr_dt, contacts.get());
             break;
         case IntegratorMethod::Heun:
-            runHeun(cfg, sys, box, forces, rng, writer);
+            runHeun(cfg, sys, box, forces, rng, writer,
+                    corr.get(), corr_dt, contacts.get());
             break;
         case IntegratorMethod::AdaptiveStrang:
-            runAdaptive(cfg, sys, box, forces, rng, writer);
+            runAdaptive(cfg, sys, box, forces, rng, writer,
+                        corr.get(), corr_dt, contacts.get());
             break;
+    }
+
+    if (corr) {
+        writer.writeCorrelations(*corr, cfg.t_warm);
+        std::cout << "Wrote /correlations: "
+                  << corr->numSamplesTaken() << " samples on a "
+                  << corr->nLags() << "-point grid.\n";
+    }
+
+    if (contacts) {
+        writer.writeContactDurations(*contacts);
+        std::cout << "Wrote /contact_durations: count=" << contacts->count()
+                  << ", mean=" << contacts->mean()
+                  << ", stddev=" << contacts->stddev()
+                  << ", in_progress=" << contacts->inProgressCount() << "\n";
     }
 
     writer.close();
