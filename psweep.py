@@ -508,6 +508,18 @@ def submit(slurm_files):
         subprocess.run(["sbatch", sf], check=True)
 
 
+def print_constants(base, var_names):
+    """Print all input fields that are fixed across the sweep."""
+    skip = set(var_names) | {"seed", "output_file"}
+    keys = [k for k in base if k not in skip]
+    if not keys:
+        return
+    width = max(len(k) for k in keys)
+    print("\nConstants (fixed across sweep):")
+    for k in keys:
+        print(f"  {k:<{width}} = {base[k]}")
+
+
 # =============================================================================
 # Main
 # =============================================================================
@@ -614,8 +626,10 @@ def main():
           f"(under {os.path.join(psweep_dir, 'slurm')})")
 
     if known.submit:
+        print_constants(base, var_names)
         submit(slurm_files)
     else:
+        print_constants(base, var_names)
         print("\nNot submitted (use --submit to sbatch).")
 
     return 0
