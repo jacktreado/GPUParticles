@@ -10,3 +10,5 @@ from . import msd as _msd  # noqa: F401
 from . import force_orientation as _fo  # noqa: F401
 from . import hexatic as _hexatic  # noqa: F401
 from . import clusters as _clusters  # noqa: F401
+from . import correlations as _correlations  # noqa: F401
+from . import contact_duration as _contact_duration  # noqa: F401

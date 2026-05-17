@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(python3)",
+      "Bash(h5dump -H /Users/jacktreado/Dresden/Projects/GPUParticles/output/psweep_2026-05-15_N5000_R9_ss_phase_diagram/clusters.h5)",
+      "Bash(h5dump -H /Users/jacktreado/Dresden/Projects/GPUParticles/output/psweep_2026-05-15_N5000_R9_ss_phase_diagram/force_orientation.h5)",
+      "Bash(xargs ls -lh)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

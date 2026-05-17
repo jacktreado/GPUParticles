@@ -25,6 +25,7 @@
 #include "AdaptiveIntegrator.hpp"
 #include "Box.hpp"
 #include "CellList.hpp"
+#include "CliOverrides.hpp"
 #include "Config.hpp"
 #include "ContactDurationAccumulator.hpp"
 #include "CorrelationAccumulator.hpp"
@@ -36,8 +37,11 @@
 #include "System.hpp"
 #include "TrajectoryWriter.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -49,13 +53,42 @@ namespace {
 void printUsage(const char* progname) {
     std::cout
         << "Usage:\n"
-        << "  " << progname << " run   <input.json>   Run a Brownian-dynamics simulation.\n"
-        << "  " << progname << " info  <input.json>   Print the parsed configuration.\n"
-        << "  " << progname << " help                 Show this message.\n";
+        << "  " << progname << " run   <input.json> [--key value ...]   Run a Brownian-dynamics simulation.\n"
+        << "  " << progname << " info  <input.json> [--key value ...]   Print the parsed configuration.\n"
+        << "  " << progname << " help                                   Show this message.\n"
+        << "\n"
+        << "Flag overrides take the form --key value or --key=value, where 'key'\n"
+        << "is any JSON field accepted by the input file (e.g. --phi 0.7 --N 500\n"
+        << "--potential soft_sphere --compute_correlations true). Overrides go\n"
+        << "through the same validation and derived-quantity recomputation as\n"
+        << "the JSON file. Unknown flag names error out.\n";
 }
 
-int cmdInfo(const std::string& jsonPath) {
-    Config cfg = Config::fromFile(jsonPath);
+// Load the JSON file at `jsonPath` and merge the CLI override object on top.
+// Returns the resulting Config; all of Config's normal validation and
+// recompute() runs on the merged values.
+Config loadMergedConfig(const std::string& jsonPath,
+                        const nlohmann::json& overrides) {
+    std::ifstream in(jsonPath);
+    if (!in.is_open()) {
+        throw std::runtime_error(
+            "Could not open input file '" + jsonPath + "'");
+    }
+    nlohmann::json j;
+    try {
+        in >> j;
+    } catch (const nlohmann::json::parse_error& e) {
+        throw std::runtime_error(
+            std::string("JSON parse error in '") + jsonPath + "': " + e.what());
+    }
+    for (auto it = overrides.begin(); it != overrides.end(); ++it) {
+        j[it.key()] = it.value();
+    }
+    return Config::fromJson(j);
+}
+
+int cmdInfo(const std::string& jsonPath, const nlohmann::json& overrides) {
+    Config cfg = loadMergedConfig(jsonPath, overrides);
     cfg.print();
     return EXIT_SUCCESS;
 }
@@ -312,8 +345,8 @@ void runEulerMaruyama(const Config& cfg, System& sys, Box& box,
               << n_frames << " frames written.\n";
 }
 
-int cmdRun(const std::string& jsonPath) {
-    Config cfg = Config::fromFile(jsonPath);
+int cmdRun(const std::string& jsonPath, const nlohmann::json& overrides) {
+    Config cfg = loadMergedConfig(jsonPath, overrides);
     cfg.print();
 
     // ---- Build the engine objects ------------------------------------------
@@ -426,11 +459,13 @@ int main(int argc, char** argv) {
         }
         if (cmd == "info") {
             if (argc < 3) { printUsage(argv[0]); return EXIT_FAILURE; }
-            return cmdInfo(argv[2]);
+            const auto overrides = CliOverrides::parse(argc, argv, 3);
+            return cmdInfo(argv[2], overrides);
         }
         if (cmd == "run") {
             if (argc < 3) { printUsage(argv[0]); return EXIT_FAILURE; }
-            return cmdRun(argv[2]);
+            const auto overrides = CliOverrides::parse(argc, argv, 3);
+            return cmdRun(argv[2], overrides);
         }
         std::cerr << "Unknown command: '" << cmd << "'\n";
         printUsage(argv[0]);

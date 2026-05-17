@@ -142,10 +142,14 @@ def _local_voronoi_phi(positions: np.ndarray, sigma: float, Lx: float, Ly: float
     from scipy.spatial import Voronoi
 
     N = positions.shape[0]
+    # Trajectory positions are unwrapped; fold to the primary cell before the
+    # 9-image tiling or the Voronoi diagram explodes over an unbounded domain.
+    pos = np.column_stack([np.mod(positions[:, 0], Lx),
+                           np.mod(positions[:, 1], Ly)])
     shifts = np.array(
         [(dx * Lx, dy * Ly) for dx in (-1, 0, 1) for dy in (-1, 0, 1)]
     )
-    images = (positions[None, :, :] + shifts[:, None, :]).reshape(-1, 2)
+    images = (pos[None, :, :] + shifts[:, None, :]).reshape(-1, 2)
 
     vor = Voronoi(images)
     particle_area = np.pi * (sigma / 2.0) ** 2

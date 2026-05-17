@@ -8,7 +8,17 @@
 // A rectangular 2D simulation cell with periodic boundary conditions.
 //
 //   Lx_, Ly_  side lengths
-//   origin    (0, 0); positions are stored in [0, Lx) x [0, Ly)
+//   origin    (0, 0)
+//
+// Position contract:
+//   Stored particle and anchor coordinates are NOT auto-wrapped by the engine.
+//   They diffuse freely over all of R^2 so that downstream analyses (MSD,
+//   intermediate scattering functions, etc.) see true unwrapped trajectories.
+//
+//   Pair forces, spring forces, and cell-list rebuild triggers all operate on
+//   displacement vectors via minimumImage(), which is image-invariant. The
+//   wrap() helper below remains available for the few callers that need a
+//   primary-image copy (cell-list binning, initialization, display).
 //
 // Methods are inline because they will be hammered every step, by every
 // particle, by every pair. minimumImage() is the most-called function in the
@@ -39,6 +49,8 @@ public:
 
     // Wrap a position into the primary cell [0, L) x [0, L).
     // std::floor handles negative values correctly (e.g. floor(-0.3) == -1).
+    // Not called by the integrator — only by callers that need a primary-image
+    // copy (cell-list binning, initialization, display).
     inline void wrap(double& x, double& y) const {
         x -= Lx_ * std::floor(x / Lx_);
         y -= Ly_ * std::floor(y / Ly_);

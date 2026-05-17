@@ -114,8 +114,9 @@ TEST(AdaptiveMacroIntegratorTest, MSDScalesWithDiffusionCoefficient) {
         const double py = (static_cast<double>(i / static_cast<std::size_t>(side)) + 0.5) * spacing;
         sys.setPosition(i, px, py);
     }
-    // Snapshot the initial positions for the MSD computation; the Box wraps
-    // post-step so we need to track unwrapped displacements ourselves.
+    // Snapshot the initial positions for the MSD computation. Stored
+    // positions are unwrapped (see Box.hpp), so the displacement is just
+    // sys.getX(i) - x0[i] with no minimum-image correction.
     std::vector<double> x0(N), y0(N);
     for (std::size_t i = 0; i < N; ++i) { x0[i] = sys.getX(i); y0[i] = sys.getY(i); }
 
@@ -135,9 +136,8 @@ TEST(AdaptiveMacroIntegratorTest, MSDScalesWithDiffusionCoefficient) {
 
     double msd = 0.0;
     for (std::size_t i = 0; i < N; ++i) {
-        double dx = sys.getX(i) - x0[i];
-        double dy = sys.getY(i) - y0[i];
-        box.minimumImage(dx, dy);
+        const double dx = sys.getX(i) - x0[i];
+        const double dy = sys.getY(i) - y0[i];
         msd += dx * dx + dy * dy;
     }
     msd /= static_cast<double>(N);

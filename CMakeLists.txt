@@ -48,6 +48,7 @@ add_library(brownian_lib
     src/RandomGenerator.cpp
     src/Initializer.cpp
     src/Config.cpp
+    src/CliOverrides.cpp
     src/TrajectoryWriter.cpp
     src/CorrelationAccumulator.cpp
     src/ContactDurationAccumulator.cpp

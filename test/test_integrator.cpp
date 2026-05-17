@@ -93,10 +93,8 @@ TEST(IntegratorTest, DriftFromForce) {
 
         integ.step(sys, box, rng);
 
-        // Displacement could wrap, so minimumImage against (50,50).
-        double dx = sys.getX(0) - 50.0;
-        double dy = sys.getY(0) - 50.0;
-        box.minimumImage(dx, dy);
+        // Positions are unwrapped, so the raw difference is the true displacement.
+        const double dx = sys.getX(0) - 50.0;
         sum_dx += dx;
     }
     const double mean_dx  = sum_dx / N_trials;
@@ -108,12 +106,15 @@ TEST(IntegratorTest, DriftFromForce) {
     EXPECT_NEAR(mean_dx, expected, tol);
 }
 
-// ---- Positions stay in the primary cell ------------------------------------
-
-TEST(IntegratorTest, PositionsWrappedAfterStep) {
+// ---- Positions drift freely across the boundary ----------------------------
+// Stored positions are NOT auto-wrapped (see Box.hpp). Particles started near
+// the box corner with kT > 0 will eventually leak across the boundary; the
+// engine must tolerate that without producing NaNs or runaway state.
+TEST(IntegratorTest, PositionsDriftFreelyAcrossBoundary) {
     const double L = 5.0;
     const std::size_t N = 32;
-    Integrator integ(1.0, 1e-2);   // gamma=1, large dt to force wrapping
+    Integrator integ(1.0, 1e-2);   // gamma=1, large dt so noise easily exits
+    integ.setKBT(1.0);
     Box box(L);
     RandomGenerator rng(99);
 
@@ -123,10 +124,8 @@ TEST(IntegratorTest, PositionsWrappedAfterStep) {
     for (int step = 0; step < 10; ++step) {
         integ.step(sys, box, rng);
         for (std::size_t i = 0; i < N; ++i) {
-            EXPECT_GE(sys.getX(i), 0.0) << "step=" << step << " i=" << i;
-            EXPECT_LT(sys.getX(i), L)   << "step=" << step << " i=" << i;
-            EXPECT_GE(sys.getY(i), 0.0) << "step=" << step << " i=" << i;
-            EXPECT_LT(sys.getY(i), L)   << "step=" << step << " i=" << i;
+            EXPECT_TRUE(std::isfinite(sys.getX(i))) << "step=" << step << " i=" << i;
+            EXPECT_TRUE(std::isfinite(sys.getY(i))) << "step=" << step << " i=" << i;
         }
     }
 }
@@ -155,9 +154,8 @@ TEST(IntegratorTest, MSDMatchesDiffusionCoefficient) {
 
     double msd = 0.0;
     for (std::size_t i = 0; i < N; ++i) {
-        double dx = sys.getX(i) - L / 2.0;
-        double dy = sys.getY(i) - L / 2.0;
-        box.minimumImage(dx, dy);
+        const double dx = sys.getX(i) - L / 2.0;
+        const double dy = sys.getY(i) - L / 2.0;
         msd += dx * dx + dy * dy;
     }
     msd /= static_cast<double>(N);

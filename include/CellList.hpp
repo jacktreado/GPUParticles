@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -183,4 +184,25 @@ private:
 
     // Reads sys.x_, sys.y_; writes x_snapshot_, y_snapshot_
     void captureSnapshot(const System& sys);
+
+    // ---- PBC-safe integer cell index ---------------------------------------
+    // Maps an absolute world position (which may lie outside [0, L)) to the
+    // (cx, cy) cell index in [0, nx_) x [0, ny_). Uses floor-mod so that
+    // negative or out-of-box positions are mapped correctly to their primary
+    // image cell. Defensive clamps guard against the floating-point edge case
+    // where the result rounds up to nx_ exactly. Branch-free except for the
+    // edge clamp (CUDA-friendly for the eventual GPU port).
+    inline void cellOf(double x, double y,
+                       std::int32_t& cx, std::int32_t& cy) const {
+        cx = static_cast<std::int32_t>(std::floor(x * inv_cell_x_));
+        cy = static_cast<std::int32_t>(std::floor(y * inv_cell_y_));
+        cx -= nx_ * static_cast<std::int32_t>(
+                       std::floor(static_cast<double>(cx) / nx_));
+        cy -= ny_ * static_cast<std::int32_t>(
+                       std::floor(static_cast<double>(cy) / ny_));
+        if (cx >= nx_) cx = nx_ - 1;
+        if (cy >= ny_) cy = ny_ - 1;
+        if (cx < 0)    cx = 0;
+        if (cy < 0)    cy = 0;
+    }
 };

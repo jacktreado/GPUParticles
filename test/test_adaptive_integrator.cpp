@@ -208,9 +208,11 @@ TEST(AdaptiveIntegratorTest, MoreAccurateThanEulerForSameDt) {
     EXPECT_LT(err_ck, err_euler);
 }
 
-// ---- PBC: positions stay in [0, L) after advance ---------------------------
-
-TEST(AdaptiveIntegratorTest, PositionsWrappedAfterAdvance) {
+// ---- PBC: positions are no longer auto-wrapped (see Box.hpp) --------------
+// Pair forces use minimumImage on displacements, so a deterministic WCA push
+// across the boundary leaves both particles finite. The integrator must
+// tolerate (and not crash on) positions that escape [0, L).
+TEST(AdaptiveIntegratorTest, PositionsRemainFiniteAfterAdvanceAcrossBoundary) {
     const double L = 5.0;
     const double d = 1.0;
     const double T = 0.1;
@@ -225,10 +227,8 @@ TEST(AdaptiveIntegratorTest, PositionsWrappedAfterAdvance) {
     ai.advance(sys, box, fc, T);
 
     for (std::size_t i = 0; i < 2; ++i) {
-        EXPECT_GE(sys.getX(i), 0.0);
-        EXPECT_LT(sys.getX(i), L);
-        EXPECT_GE(sys.getY(i), 0.0);
-        EXPECT_LT(sys.getY(i), L);
+        EXPECT_TRUE(std::isfinite(sys.getX(i)));
+        EXPECT_TRUE(std::isfinite(sys.getY(i)));
     }
 }
 

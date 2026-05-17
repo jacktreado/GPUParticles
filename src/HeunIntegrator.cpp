@@ -163,20 +163,6 @@ void HeunIntegrator::step(System& sys, const Box& box,
         y[i] = ry_n + dy1 + dw_amp * zy;
     }
 
-    // ---- (3) Wrap predictor positions / anchors into the primary cell ------
-    for (std::size_t i = 0; i < N; ++i) {
-        double xi = x[i], yi = y[i];
-        box.wrap(xi, yi);
-        x[i] = xi; y[i] = yi;
-    }
-    if (anchor_on) {
-        for (std::size_t i = 0; i < N; ++i) {
-            double xi = ax[i], yi = ay[i];
-            box.wrap(xi, yi);
-            ax[i] = xi; ay[i] = yi;
-        }
-    }
-
     // ---- (4) F2 at predictor state -----------------------------------------
     // Skipping a CellList rebuild between stages is safe: predictor delta is
     // bounded by max_drift + |Z| * dw_amp, well under r_skin/2 for default
@@ -242,19 +228,5 @@ void HeunIntegrator::step(System& sys, const Box& box,
         y[i]  = r_orig_y_[i] + dy_total;
         vx[i] = dx_total * inv_dt;
         vy[i] = dy_total * inv_dt;
-    }
-
-    // ---- (6) Final wrap ----------------------------------------------------
-    for (std::size_t i = 0; i < N; ++i) {
-        double xi = x[i], yi = y[i];
-        box.wrap(xi, yi);
-        x[i] = xi; y[i] = yi;
-    }
-    if (anchor_on) {
-        for (std::size_t i = 0; i < N; ++i) {
-            double xi = ax[i], yi = ay[i];
-            box.wrap(xi, yi);
-            ax[i] = xi; ay[i] = yi;
-        }
     }
 }

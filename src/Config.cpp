@@ -74,21 +74,25 @@ Config Config::fromFile(const std::string& path) {
             std::string("Config::fromFile: JSON parse error — ") + e.what());
     }
 
+    return Config::fromJson(j);
+}
+
+Config Config::fromJson(const json& j) {
     Config cfg;
 
     // ---- Required fields ----------------------------------------------------
     if (!j.contains("N") || !j.contains("phi")) {
         throw std::runtime_error(
-            "Config::fromFile: missing required field(s); "
+            "Config: missing required field(s); "
             "the input must contain N and phi.");
     }
     cfg.N   = j.at("N").get<std::size_t>();
     cfg.phi = j.at("phi").get<double>();
 
     if (cfg.N == 0)
-        throw std::runtime_error("Config::fromFile: N must be > 0");
+        throw std::runtime_error("Config: N must be > 0");
     if (cfg.phi <= 0.0 || cfg.phi >= 1.0)
-        throw std::runtime_error("Config::fromFile: phi must lie in (0, 1)");
+        throw std::runtime_error("Config: phi must lie in (0, 1)");
 
     // ---- Dimensionless control parameters (with defaults) -------------------
     if (j.contains("Pe"))    cfg.Pe    = j["Pe"].get<double>();

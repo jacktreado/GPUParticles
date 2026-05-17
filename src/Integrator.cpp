@@ -132,26 +132,6 @@ void Integrator::step(System& sys, const Box& box, RandomGenerator& rng) const {
             ay[i] += drift_ay + anchor_noise_amplitude_ * yi_a;
         }
     }
-
-    // ---- Periodic boundary conditions ---------------------------------------
-    // Wrap both particle and (when active) anchor positions into the primary
-    // cell.  Spring forces use minimum-image, so this is always consistent.
-    for (std::size_t i = 0; i < N; ++i) {
-        double xi = x[i];
-        double yi = y[i];
-        box.wrap(xi, yi);
-        x[i] = xi;
-        y[i] = yi;
-    }
-    if (anchor_on) {
-        for (std::size_t i = 0; i < N; ++i) {
-            double xi = ax[i];
-            double yi = ay[i];
-            box.wrap(xi, yi);
-            ax[i] = xi;
-            ay[i] = yi;
-        }
-    }
 }
 
 void Integrator::stepWithForces(System& sys, const Box& box,
@@ -264,24 +244,6 @@ void Integrator::kickStep(System& sys, const Box& box, RandomGenerator& rng,
 
             ax[i] += drift_ax + anchor_noise_amp * xi_a;
             ay[i] += drift_ay + anchor_noise_amp * yi_a;
-        }
-    }
-
-    // ---- Periodic boundary conditions ---------------------------------------
-    for (std::size_t i = 0; i < N; ++i) {
-        double xi = x[i];
-        double yi = y[i];
-        box.wrap(xi, yi);
-        x[i] = xi;
-        y[i] = yi;
-    }
-    if (anchor_on) {
-        for (std::size_t i = 0; i < N; ++i) {
-            double xi = ax[i];
-            double yi = ay[i];
-            box.wrap(xi, yi);
-            ax[i] = xi;
-            ay[i] = yi;
         }
     }
 }

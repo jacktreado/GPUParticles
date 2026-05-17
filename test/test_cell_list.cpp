@@ -286,6 +286,58 @@ TEST(CellListTest, NeighborAcrossPeriodicBoundary) {
     EXPECT_TRUE(one_sees_zero) << "particle 1 should see particle 0 across PBC";
 }
 
+// ---- Out-of-box positions ---------------------------------------------------
+
+// After the integrator stopped wrapping stored positions, particles can drift
+// outside [0, L). The cell list must still produce the same Verlet list as
+// the equivalent in-box configuration.
+TEST(CellListTest, NeighborListInvariantUnderImageShift) {
+    const double r_cut  = std::pow(2.0, 1.0 / 6.0);
+    const double r_skin = 0.5;
+    const double L      = 20.0;
+    const std::size_t N = 16;
+
+    Box box(L);
+
+    // Reference: all positions in [0, L).
+    System sys_in(N);
+    for (std::size_t i = 0; i < N; ++i) {
+        sys_in.setPosition(i,
+            (static_cast<double>(i % 4) + 0.5) * (L / 4.0),
+            (static_cast<double>(i / 4) + 0.5) * (L / 4.0));
+    }
+    CellList cl_in(r_cut, r_skin, N, box);
+    cl_in.rebuild(sys_in, box);
+
+    // Shifted: shove each particle by a different integer multiple of (Lx, Ly)
+    // so positions land far outside [0, L) (some negative, some > L).
+    System sys_out(N);
+    for (std::size_t i = 0; i < N; ++i) {
+        const int kx = (static_cast<int>(i) % 3) - 1;  // -1, 0, 1, -1, 0, 1, ...
+        const int ky = (static_cast<int>(i) / 3) - 2;  // a mix of negative and positive
+        sys_out.setPosition(i,
+            sys_in.getX(i) + kx * L,
+            sys_in.getY(i) + ky * L);
+    }
+    CellList cl_out(r_cut, r_skin, N, box);
+    cl_out.rebuild(sys_out, box);
+
+    // Per-particle Verlet lists must match as sets.
+    const std::int32_t* nlist_in        = cl_in.nlistData();
+    const std::int32_t* nlist_start_in  = cl_in.nlistStartData();
+    const std::int32_t* nlist_out       = cl_out.nlistData();
+    const std::int32_t* nlist_start_out = cl_out.nlistStartData();
+
+    for (std::size_t i = 0; i < N; ++i) {
+        std::set<std::int32_t> set_in, set_out;
+        for (std::int32_t k = nlist_start_in[i];  k < nlist_start_in[i + 1];  ++k)
+            set_in.insert(nlist_in[k]);
+        for (std::int32_t k = nlist_start_out[i]; k < nlist_start_out[i + 1]; ++k)
+            set_out.insert(nlist_out[k]);
+        EXPECT_EQ(set_in, set_out) << "neighbor sets diverge for i=" << i;
+    }
+}
+
 // ---- Mean neighbors / diagnostics -------------------------------------------
 
 TEST(CellListTest, DiagnosticsAfterRebuild) {

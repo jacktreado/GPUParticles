@@ -111,24 +111,20 @@ void CellList::rebuild(const System& sys, const Box& box) {
 // Stage 1 — computeCellIds
 // -----------------------------------------------------------------------------
 // One independent operation per particle. Becomes one CUDA thread per i.
-// Positions are guaranteed wrapped to [0, Lx) x [0, Ly) by the integrator,
-// but a defensive clamp guards against the floating-point edge case where
-// x[i] == Lx - eps rounds up to nx_ when multiplied by inv_cell_x_.
+// Stored positions are NOT wrapped by the integrator (see Box.hpp); cellOf()
+// applies a floor-mod so any out-of-box position is mapped to its primary
+// image cell. The defensive edge clamp inside cellOf() guards against the
+// floating-point case where x[i] == Lx - eps rounds up to nx_.
 // =============================================================================
 void CellList::computeCellIds(const System& sys) {
     const double* __restrict__ x   = sys.xData();
     const double* __restrict__ y   = sys.yData();
     std::int32_t* __restrict__ cid = cell_id_.data();
     const std::int32_t nx = nx_;
-    const std::int32_t ny = ny_;
 
     for (std::size_t i = 0; i < N_; ++i) {
-        std::int32_t cx = static_cast<std::int32_t>(x[i] * inv_cell_x_);
-        std::int32_t cy = static_cast<std::int32_t>(y[i] * inv_cell_y_);
-        if (cx >= nx) cx = nx - 1;
-        if (cy >= ny) cy = ny - 1;
-        if (cx < 0)   cx = 0;
-        if (cy < 0)   cy = 0;
+        std::int32_t cx, cy;
+        cellOf(x[i], y[i], cx, cy);
         cid[i] = cx + nx * cy;
     }
 }
@@ -227,12 +223,8 @@ void CellList::buildVerletList(const System& sys, const Box& box) {
     for (std::size_t i = 0; i < N_; ++i) {
         const double xi = x[i];
         const double yi = y[i];
-        std::int32_t cx = static_cast<std::int32_t>(xi * inv_cell_x_);
-        std::int32_t cy = static_cast<std::int32_t>(yi * inv_cell_y_);
-        if (cx >= nx) cx = nx - 1;
-        if (cy >= ny) cy = ny - 1;
-        if (cx < 0)   cx = 0;
-        if (cy < 0)   cy = 0;
+        std::int32_t cx, cy;
+        cellOf(xi, yi, cx, cy);
 
         std::int32_t count = 0;
         for (std::int32_t dy_off = -1; dy_off <= 1; ++dy_off) {
@@ -269,12 +261,8 @@ void CellList::buildVerletList(const System& sys, const Box& box) {
     for (std::size_t i = 0; i < N_; ++i) {
         const double xi = x[i];
         const double yi = y[i];
-        std::int32_t cx = static_cast<std::int32_t>(xi * inv_cell_x_);
-        std::int32_t cy = static_cast<std::int32_t>(yi * inv_cell_y_);
-        if (cx >= nx) cx = nx - 1;
-        if (cy >= ny) cy = ny - 1;
-        if (cx < 0)   cx = 0;
-        if (cy < 0)   cy = 0;
+        std::int32_t cx, cy;
+        cellOf(xi, yi, cx, cy);
 
         std::int32_t w = nlist_start_[i];
         for (std::int32_t dy_off = -1; dy_off <= 1; ++dy_off) {

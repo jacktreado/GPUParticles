@@ -1,8 +1,9 @@
 """
 msd — ensemble-averaged mean squared displacement vs reference frame.
 
-MSD(i) = < |r_i - r_ref|^2 >_particles, no PBC unwrapping. Best used when
-displacements stay well within L/2.
+MSD(i) = < |r_i - r_ref|^2 >_particles. Trajectory positions are stored
+unwrapped by the engine (the integrator does not fold positions back into the
+primary cell), so the naive difference is the true displacement at any lag.
 """
 
 from __future__ import annotations

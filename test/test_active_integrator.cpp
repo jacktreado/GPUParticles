@@ -97,8 +97,6 @@ TEST(ActiveIntegratorTest, ActiveForceDriftDirection) {
         RandomGenerator rng(t + 1);
         integ.step(sys, box, rng);
 
-        double dx = sys.getX(0) - L / 2.0;
-        box.minimumImage(dx, dx);
         mean_dx += sys.getX(0) - L / 2.0;
     }
     mean_dx /= N_trials;
@@ -267,7 +265,10 @@ TEST(ActiveIntegratorTest, ThetaMSDMatchesRotDiffusion) {
 
 // ---- Positions remain in box after ABP step --------------------------------
 
-TEST(ActiveIntegratorTest, PositionsWrappedAfterActiveStep) {
+// Stored positions are NOT auto-wrapped (see Box.hpp). With strong active
+// drift from the near-corner start, particles will exit the box quickly; the
+// engine must remain finite and well-behaved.
+TEST(ActiveIntegratorTest, PositionsDriftFreelyAfterActiveStep) {
     const double L = 5.0;
     const std::size_t N = 32;
     Integrator integ(1.0, 1e-2);
@@ -285,10 +286,8 @@ TEST(ActiveIntegratorTest, PositionsWrappedAfterActiveStep) {
     for (int step = 0; step < 10; ++step) {
         integ.step(sys, box, rng);
         for (std::size_t i = 0; i < N; ++i) {
-            EXPECT_GE(sys.getX(i), 0.0) << "step=" << step << " i=" << i;
-            EXPECT_LT(sys.getX(i), L)   << "step=" << step << " i=" << i;
-            EXPECT_GE(sys.getY(i), 0.0) << "step=" << step << " i=" << i;
-            EXPECT_LT(sys.getY(i), L)   << "step=" << step << " i=" << i;
+            EXPECT_TRUE(std::isfinite(sys.getX(i))) << "step=" << step << " i=" << i;
+            EXPECT_TRUE(std::isfinite(sys.getY(i))) << "step=" << step << " i=" << i;
         }
     }
 }
@@ -632,11 +631,12 @@ TEST(AnchoredIntegratorTest, KaZeroNoSpringEffect) {
     }
 }
 
-// ---- Anchors are wrapped into the periodic cell ----------------------------
+// ---- Anchors drift freely across boundaries (positions are not auto-wrapped)
 
-TEST(AnchoredIntegratorTest, AnchorsWrappedInBox) {
-    // A free anchor (k_a=0, gamma_a small => high noise) starting near the
-    // boundary will drift out and must be wrapped back in.
+TEST(AnchoredIntegratorTest, AnchorsDriftFreelyAcrossBoundary) {
+    // Stored anchor coordinates are unwrapped (see Box.hpp). A free anchor
+    // (k_a=0) starting near the boundary diffuses across without being
+    // remapped; the engine must remain numerically well-behaved.
     const double L  = 5.0;
     const std::size_t N = 32;
     System sys(N);
@@ -646,7 +646,7 @@ TEST(AnchoredIntegratorTest, AnchorsWrappedInBox) {
         sys.setAnchor  (i, L - 0.01, L - 0.01);
     }
 
-    Integrator integ(1.0, 1e-2);   // large dt to force wrapping
+    Integrator integ(1.0, 1e-2);   // large dt to push anchors past the boundary
     integ.setSpringStiffness(0.0);
     integ.setAnchorFriction(1.0);  // free diffusing anchors
     RandomGenerator rng(77);
@@ -654,10 +654,8 @@ TEST(AnchoredIntegratorTest, AnchorsWrappedInBox) {
     for (int s = 0; s < 50; ++s) {
         integ.step(sys, box, rng);
         for (std::size_t i = 0; i < N; ++i) {
-            EXPECT_GE(sys.getAx(i), 0.0) << "step=" << s << " i=" << i;
-            EXPECT_LT(sys.getAx(i), L)   << "step=" << s << " i=" << i;
-            EXPECT_GE(sys.getAy(i), 0.0) << "step=" << s << " i=" << i;
-            EXPECT_LT(sys.getAy(i), L)   << "step=" << s << " i=" << i;
+            EXPECT_TRUE(std::isfinite(sys.getAx(i))) << "step=" << s << " i=" << i;
+            EXPECT_TRUE(std::isfinite(sys.getAy(i))) << "step=" << s << " i=" << i;
         }
     }
 }

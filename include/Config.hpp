@@ -2,6 +2,8 @@
 
 #include "ForceCalculator.hpp"
 
+#include <nlohmann/json_fwd.hpp>
+
 #include <cstdint>
 #include <string>
 
@@ -142,6 +144,11 @@ public:
 
     // ---- Methods ------------------------------------------------------------
     static Config fromFile(const std::string& path);
+
+    // Same as fromFile but takes an already-parsed JSON object. Lets callers
+    // (e.g. main.cpp) merge CLI overrides into the JSON before construction
+    // so all validation and recompute() runs on the final, merged values.
+    static Config fromJson(const nlohmann::json& j);
 
     // Recompute every derived quantity (kT, f0, tau_theta, gamma_a, k_a, L)
     // from the current inputs. Call after mutating any input field.

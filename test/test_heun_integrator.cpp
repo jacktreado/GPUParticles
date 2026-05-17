@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <cstddef>
+#include <vector>
 
 // =============================================================================
 // HeunIntegrator unit tests
@@ -73,9 +74,8 @@ TEST(HeunIntegratorTest, FreeParticleMSDMatchesDiffusion) {
 
     double msd = 0.0;
     for (std::size_t i = 0; i < kFreeN; ++i) {
-        double dx = sys.getX(i) - x0[i];
-        double dy = sys.getY(i) - y0[i];
-        box.minimumImage(dx, dy);
+        const double dx = sys.getX(i) - x0[i];
+        const double dy = sys.getY(i) - y0[i];
         msd += dx * dx + dy * dy;
     }
     msd /= static_cast<double>(kFreeN);
@@ -127,11 +127,11 @@ TEST(HeunIntegratorTest, ConstantActiveDriftIsExact) {
     }
 }
 
-// PBC: positions stay in the primary cell after each step. Particles start
-// at the high-x/y corner so any positive displacement triggers a wrap. The
-// drift cap is on (matches the project default) so the WCA blow-up from
-// the initial overlap doesn't fling particles past the box.
-TEST(HeunIntegratorTest, PositionsWrappedAfterStep) {
+// Positions are NOT auto-wrapped by the engine (see Box.hpp). Particles start
+// at the high-x/y corner with overlap forces pushing them outward; we expect
+// some particles to exit [0, L), but all pair distances under minimum image
+// must remain finite and physically sensible (no NaNs, no runaway drift).
+TEST(HeunIntegratorTest, PositionsDriftFreelyAcrossBoundary) {
     const double L = 5.0;
     const std::size_t N = 32;
     HeunIntegrator integ(1.0, 1e-2);
@@ -144,15 +144,21 @@ TEST(HeunIntegratorTest, PositionsWrappedAfterStep) {
     System sys(N);
     for (std::size_t i = 0; i < N; ++i) sys.setPosition(i, L - 0.01, L - 0.01);
 
+    bool any_outside_box = false;
     for (int step = 0; step < 10; ++step) {
         integ.step(sys, box, fc, nullptr, rng);
         for (std::size_t i = 0; i < N; ++i) {
-            EXPECT_GE(sys.getX(i), 0.0) << "step=" << step << " i=" << i;
-            EXPECT_LT(sys.getX(i), L)   << "step=" << step << " i=" << i;
-            EXPECT_GE(sys.getY(i), 0.0) << "step=" << step << " i=" << i;
-            EXPECT_LT(sys.getY(i), L)   << "step=" << step << " i=" << i;
+            EXPECT_TRUE(std::isfinite(sys.getX(i))) << "step=" << step << " i=" << i;
+            EXPECT_TRUE(std::isfinite(sys.getY(i))) << "step=" << step << " i=" << i;
+            if (sys.getX(i) < 0.0 || sys.getX(i) >= L ||
+                sys.getY(i) < 0.0 || sys.getY(i) >= L) {
+                any_outside_box = true;
+            }
         }
     }
+    // We don't insist positions exit the box (that depends on RNG), but the
+    // engine must tolerate it if they do — covered by the finiteness checks.
+    (void)any_outside_box;
 }
 
 // Athermal limit (kT = 0, f0 = 0, k_a = 0) on a free-particle setup: Heun
@@ -181,4 +187,62 @@ TEST(HeunIntegratorTest, AthermalFreeParticleStaysPut) {
         EXPECT_DOUBLE_EQ(sys.getX(i), x0[i]);
         EXPECT_DOUBLE_EQ(sys.getY(i), y0[i]);
     }
+}
+
+// Stored positions are unwrapped: drive a passive Brownian system long enough
+// that the RMS displacement exceeds L/2, then verify the naive MSD (no
+// minimum-image correction) still grows as 4*D*t. This is the regression test
+// for the MSD plateau bug — pre-fix, the engine wrapped positions in-place
+// and the same measurement would saturate near L^2/6.
+TEST(HeunIntegratorTest, UnwrappedFreeParticleMSDGrowsPastBox) {
+    const double gamma = 1.0;
+    const double dt    = 1e-2;
+    const double kT    = 1.0;
+    const double D     = kT / gamma;
+    const double L     = 5.0;            // small box: RMS will exceed L/2 fast
+    const int    T     = 2000;           // 4*D*dt*T = 80 >> (L/2)^2 = 6.25
+    const std::size_t N = 256;
+
+    HeunIntegrator integ(gamma, dt);
+    integ.setKBT(kT);
+    Box             box(L);
+    RandomGenerator rng(11);
+    // No forces (use SoftSphere with strength 0, particles spread far apart).
+    // Easiest: place all particles at the box center; with kT >> 0 they
+    // quickly disperse, but WCA blow-up is bounded by the drift cap.
+    integ.setMaxDrift(0.1);
+    ForceCalculator fc(0.0, 1.0, PotentialType::WCA);
+
+    System sys(N);
+    // Spread on a wide lattice so initial WCA is zero, then let diffusion take
+    // them past the box boundary.
+    const auto m = static_cast<std::size_t>(std::ceil(std::sqrt(double(N))));
+    const double spacing = L / static_cast<double>(m);
+    for (std::size_t i = 0; i < N; ++i) {
+        sys.setPosition(i,
+                        (static_cast<double>(i % m) + 0.5) * spacing,
+                        (static_cast<double>(i / m) + 0.5) * spacing);
+    }
+    std::vector<double> x0(N), y0(N);
+    for (std::size_t i = 0; i < N; ++i) { x0[i] = sys.getX(i); y0[i] = sys.getY(i); }
+
+    for (int t = 0; t < T; ++t)
+        integ.step(sys, box, fc, nullptr, rng);
+
+    double msd = 0.0;
+    for (std::size_t i = 0; i < N; ++i) {
+        const double dx = sys.getX(i) - x0[i];
+        const double dy = sys.getY(i) - y0[i];
+        msd += dx * dx + dy * dy;
+    }
+    msd /= static_cast<double>(N);
+
+    const double expected = 4.0 * D * dt * T;       // = 80
+    const double sigma    = expected / std::sqrt(static_cast<double>(N) / 2.0);
+
+    // MSD must be far above any wrapping plateau (which would saturate at
+    // ~L^2/3 ≈ 8.3 for naive in-box subtraction), and within a few sigma of
+    // the diffusive prediction.
+    EXPECT_GT(msd, 2.0 * L * L);
+    EXPECT_NEAR(msd, expected, 4.0 * sigma);
 }

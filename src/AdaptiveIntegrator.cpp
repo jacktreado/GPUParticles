@@ -245,38 +245,20 @@ struct AdaptiveIntegrator::Impl {
         }
     }
 
-    // q -> (sys.{x,y,ax,ay}) and wrap.
-    void unpackStateAndWrap(System& sys, const Box& box) {
+    // q -> (sys.{x,y,ax,ay}). Stored positions are NOT wrapped — they diffuse
+    // freely; pair forces and cell binning handle PBC on their own (see
+    // Box.hpp). Kept named for diff continuity with earlier "AndWrap" callers.
+    void unpackStateAndWrap(System& sys, const Box& /*box*/) {
         const std::size_t N = sys.getNumParticles();
         double* x  = sys.xData();
         double* y  = sys.yData();
         double* ax = sys.axData();
         double* ay = sys.ayData();
         for (std::size_t i = 0; i < N; ++i) {
-            double xi  = q[i];
-            double yi  = q[N + i];
-            double axi = q[2 * N + i];
-            double ayi = q[3 * N + i];
-            box.wrap(xi,  yi);
-            box.wrap(axi, ayi);
-            x[i]  = xi;
-            y[i]  = yi;
-            ax[i] = axi;
-            ay[i] = ayi;
-        }
-    }
-
-    // Wrap positions/anchors of sys without going through q. Called after the
-    // pure-noise operator so subsequent force eval stays inside [0, L).
-    void wrapInPlace(System& sys, const Box& box) {
-        const std::size_t N = sys.getNumParticles();
-        double* x  = sys.xData();
-        double* y  = sys.yData();
-        double* ax = sys.axData();
-        double* ay = sys.ayData();
-        for (std::size_t i = 0; i < N; ++i) {
-            box.wrap(x[i],  y[i]);
-            box.wrap(ax[i], ay[i]);
+            x[i]  = q[i];
+            y[i]  = q[N + i];
+            ax[i] = q[2 * N + i];
+            ay[i] = q[3 * N + i];
         }
     }
 };
@@ -372,7 +354,6 @@ double AdaptiveIntegrator::step(System& sys, const Box& box,
     applyNoiseOperator(sys, 0.5 * dt,
                        impl_->kT, impl_->gamma, impl_->gamma_a, impl_->D_r,
                        rng);
-    impl_->wrapInPlace(sys, box);
 
     // ---- D(dt) — adaptive Cash-Karp 5(4) inner sub-stepping ---------------
     advance(sys, box, fc, dt);
@@ -381,7 +362,6 @@ double AdaptiveIntegrator::step(System& sys, const Box& box,
     applyNoiseOperator(sys, 0.5 * dt,
                        impl_->kT, impl_->gamma, impl_->gamma_a, impl_->D_r,
                        rng);
-    impl_->wrapInPlace(sys, box);
 
     return dt;
 }

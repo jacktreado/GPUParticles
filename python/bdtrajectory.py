@@ -381,8 +381,9 @@ class BDTrajectory:
 
             MSD(i) = < |r_i - r_ref|^2 >_particles
 
-        No periodic-boundary correction is applied; best used when
-        displacements stay well within L/2.
+        Trajectory positions are stored unwrapped by the engine, so the
+        naive squared difference is the true displacement at any lag time
+        (no minimum-image correction needed).
         """
         ref = self.positions(reference_frame)
         msd = np.empty(self.num_frames)

@@ -393,16 +393,25 @@ void drawSimulation(ImDrawList* dl, ImVec2 p0, ImVec2 p1, const Sim& sim,
     const std::size_t N = sim.sys->getNumParticles();
     const bool        anchors_visible = show_anchors && (sim.cfg.k_a > 0.0);
 
+    // Stored positions are unwrapped (see Box.hpp). For display we fold each
+    // particle into its primary image so the viewport stays useful over long
+    // runs; anchors are drawn relative to the wrapped particle via the
+    // minimum-image displacement, so the spring still points the right way.
+
     // Pass 1: springs.
     if (anchors_visible) {
         for (std::size_t i = 0; i < N; ++i) {
             double dx = sim.sys->getX(i) - sim.sys->getAx(i);
             double dy = sim.sys->getY(i) - sim.sys->getAy(i);
             sim.box->minimumImage(dx, dy);
-            const double ax_eff = sim.sys->getX(i) - dx;
-            const double ay_eff = sim.sys->getY(i) - dy;
 
-            ImVec2 ps = worldToScreen(sim.sys->getX(i), sim.sys->getY(i));
+            double xi = sim.sys->getX(i);
+            double yi = sim.sys->getY(i);
+            sim.box->wrap(xi, yi);
+            const double ax_eff = xi - dx;
+            const double ay_eff = yi - dy;
+
+            ImVec2 ps = worldToScreen(xi, yi);
             ImVec2 as = worldToScreen(ax_eff, ay_eff);
             dl->AddLine(ps, as, spring_col, 1.0f);
         }
@@ -414,8 +423,12 @@ void drawSimulation(ImDrawList* dl, ImVec2 p0, ImVec2 p1, const Sim& sim,
             double dx = sim.sys->getX(i) - sim.sys->getAx(i);
             double dy = sim.sys->getY(i) - sim.sys->getAy(i);
             sim.box->minimumImage(dx, dy);
-            const double ax_eff = sim.sys->getX(i) - dx;
-            const double ay_eff = sim.sys->getY(i) - dy;
+
+            double xi = sim.sys->getX(i);
+            double yi = sim.sys->getY(i);
+            sim.box->wrap(xi, yi);
+            const double ax_eff = xi - dx;
+            const double ay_eff = yi - dy;
             ImVec2 as = worldToScreen(ax_eff, ay_eff);
             dl->AddCircleFilled(as, r_anchor, anchor_col);
         }
@@ -423,7 +436,10 @@ void drawSimulation(ImDrawList* dl, ImVec2 p0, ImVec2 p1, const Sim& sim,
 
     // Pass 3: particles + (optional) orientation arrows.
     for (std::size_t i = 0; i < N; ++i) {
-        ImVec2 sp = worldToScreen(sim.sys->getX(i), sim.sys->getY(i));
+        double xi = sim.sys->getX(i);
+        double yi = sim.sys->getY(i);
+        sim.box->wrap(xi, yi);
+        ImVec2 sp = worldToScreen(xi, yi);
         dl->AddCircleFilled(sp, r_particle, part_col, 24);
         dl->AddCircle      (sp, r_particle, part_edge, 24, 1.0f);
 
