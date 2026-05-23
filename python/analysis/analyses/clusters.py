@@ -55,7 +55,7 @@ _N_BINS = _CLUSTER_SIZE_BIN_EDGES.size - 1
 def analyze(
     traj: BDTrajectory,
     *,
-    link_factor: float = 1.05,
+    link_factor: float = 0.99,
     min_cluster_size: int = 4,
     with_per_particle: bool = False,
 ) -> dict[str, np.ndarray]:

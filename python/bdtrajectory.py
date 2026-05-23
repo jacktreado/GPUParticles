@@ -513,6 +513,13 @@ class BDTrajectory:
             x = pos[:, 0]
             y = pos[:, 1]
             
+            # replace in box
+            x = np.mod(x, Lx)
+            y = np.mod(y, Ly)
+            pos[:, 0] = x
+            pos[:, 1] = y
+
+            
             # color particles by cluster size
             MAX_CLUSTER_SIZE = x.shape[0]  # max cluster size is total number of particles
             
