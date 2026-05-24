@@ -131,9 +131,14 @@ class PsweepCollector:
         )
 
     def cache_path(self, combo_idx: int, seed: int) -> Path:
-        """Absolute path to the per-trajectory cache (.cache.h5)."""
+        """Absolute path to the per-trajectory cache (.cache.h5).
+
+        We strip only the trailing '.h5' with traj.stem rather than chaining
+        with_suffix() calls, because the sweep name may contain dots (e.g.
+        'phi0.5_del0.95') and with_suffix('') would eat those too.
+        """
         traj = self.traj_path(combo_idx, seed)
-        return traj.with_suffix("").with_suffix(CACHE_SUFFIX)
+        return traj.parent / (traj.stem + CACHE_SUFFIX)
 
     def input_json_path(self, combo_idx: int, seed: int) -> Path:
         self._check_seed(seed)
