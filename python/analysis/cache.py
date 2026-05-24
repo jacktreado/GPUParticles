@@ -36,6 +36,7 @@ import errno
 import fcntl
 import json
 import os
+import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -237,13 +238,27 @@ def run_and_write(
         # If the cache already exists, copy its content into the temp first —
         # this preserves cache groups for analyses we are skipping this run.
         tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
+        # Always remove a stale .tmp before proceeding — h5py opens new files
+        # with O_EXCL and will fail with FileExistsError if one is left over
+        # from a process killed between _copy_h5 and _atomic_replace.
+        if tmp_path.exists():
+            tmp_path.unlink()
         if cache_path.exists():
             # Copy the existing cache file by re-opening and rewriting via
             # h5py — bytewise copy would also work, but using h5py keeps the
             # logic uniform with the create-from-scratch case.
-            _copy_h5(cache_path, tmp_path)
-        elif tmp_path.exists():
-            tmp_path.unlink()
+            try:
+                _copy_h5(cache_path, tmp_path)
+            except OSError as e:
+                # Corrupt cache (typically a process killed mid-write). Nuke
+                # it and start fresh — analyses requested this run will get
+                # recomputed; ones we'd have skipped will simply rerun.
+                print(
+                    f"WARNING: corrupt cache file, deleting and rebuilding: "
+                    f"{cache_path} ({e})",
+                    file=sys.stderr,
+                )
+                cache_path.unlink()
 
         try:
             with h5py.File(tmp_path, "a") as f:
@@ -399,17 +414,28 @@ def read_analysis(
 ) -> Optional[dict[str, np.ndarray]]:
     """Read all datasets under /<analysis_name>/ as a dict of ndarrays.
 
-    Returns None when the analysis group is missing or contains an @error.
+    Returns None when the analysis group is missing, contains an @error, or
+    when the cache file itself is unreadable (e.g. truncated by a killed job).
     """
     if not cache_path.exists():
         return None
-    with h5py.File(cache_path, "r") as f:
-        if analysis_name not in f:
-            return None
-        grp = f[analysis_name]
-        if "error" in grp.attrs:
-            return None
-        return {k: grp[k][()] for k in grp.keys()}
+    try:
+        with h5py.File(cache_path, "r") as f:
+            if analysis_name not in f:
+                return None
+            grp = f[analysis_name]
+            if "error" in grp.attrs:
+                return None
+            return {k: grp[k][()] for k in grp.keys()}
+    except OSError as e:
+        # Truncated/corrupt cache file — typically a process killed mid-write.
+        # Treat as missing so reduce can proceed; user can re-run process for
+        # the affected seed.
+        print(
+            f"WARNING: corrupt cache file, skipping: {cache_path} ({e})",
+            file=sys.stderr,
+        )
+        return None
 
 
 def read_analysis_attrs(
@@ -417,11 +443,18 @@ def read_analysis_attrs(
 ) -> Optional[dict[str, Any]]:
     if not cache_path.exists():
         return None
-    with h5py.File(cache_path, "r") as f:
-        if analysis_name not in f:
-            return None
-        grp = f[analysis_name]
-        return {k: _attr_value(v) for k, v in grp.attrs.items()}
+    try:
+        with h5py.File(cache_path, "r") as f:
+            if analysis_name not in f:
+                return None
+            grp = f[analysis_name]
+            return {k: _attr_value(v) for k, v in grp.attrs.items()}
+    except OSError as e:
+        print(
+            f"WARNING: corrupt cache file, skipping: {cache_path} ({e})",
+            file=sys.stderr,
+        )
+        return None
 
 
 # ---------------------------------------------------------------------------
