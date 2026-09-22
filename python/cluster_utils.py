@@ -131,4 +131,54 @@ class ClusterUtils:
         for i in range(N):
             cluster_sizes[labels[i]] += 1
         
-        return labels, cluster_sizes    
+        return labels, cluster_sizes
+
+    @staticmethod
+    def local_voronoi_phi(x, y, sigma, box_length=1.0):
+        """
+        Compute the local Voronoi packing fraction phi_i = pi*(sigma/2)^2 / A_i
+        for each particle, using a 9-image periodic tiling so that cells near
+        the box edges are computed correctly.
+
+        Parameters:
+            x, y: 1D arrays of particle positions (need not be pre-wrapped)
+            sigma: particle diameter (assumes monodisperse particles)
+            box_length: side length of the periodic box (assume square, default 1.0)
+
+        Returns:
+            phi: array of per-particle local packing fractions, shape (N,).
+                 NaN for particles whose Voronoi cell is unbounded/degenerate.
+        """
+        from scipy.spatial import Voronoi
+
+        N = len(x)
+        x_ctr = np.mod(x, box_length)
+        y_ctr = np.mod(y, box_length)
+        pos = np.stack([x_ctr, y_ctr], axis=1)
+
+        # Same 3x3 tiling convention as compute_pbc_delaunay_neighbors: the
+        # unshifted (0, 0) block is placed first, so rows [0:N] of `images`
+        # are always the true central copies of the particles.
+        shifts = [(0, 0)]
+        for xx in np.arange(-1, 2):
+            for yy in np.arange(-1, 2):
+                if xx == 0 and yy == 0:
+                    continue
+                shifts.append((xx, yy))
+        shifts = np.array(shifts, dtype=float) * box_length
+
+        images = (pos[None, :, :] + shifts[:, None, :]).reshape(-1, 2)
+
+        vor = Voronoi(images)
+        particle_area = np.pi * (sigma / 2.0) ** 2
+        phi = np.empty(N, dtype=np.float64)
+        for i in range(N):
+            region = vor.regions[vor.point_region[i]]
+            if not region or -1 in region or len(region) < 3:
+                phi[i] = np.nan
+                continue
+            v = vor.vertices[region]
+            vx, vy = v[:, 0], v[:, 1]
+            area = 0.5 * np.abs(np.dot(vx, np.roll(vy, 1)) - np.dot(vy, np.roll(vx, 1)))
+            phi[i] = particle_area / area
+        return phi

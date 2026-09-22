@@ -4,7 +4,7 @@
 
 # Variables
 REMOTE_USER="treado"          # Replace with your remote username
-REMOTE_HOST="vesta.pks.mpg.de"          # Replace with your remote hostname
+REMOTE_HOST="vesta"          # Replace with your remote hostname
 REMOTE_BASE_DIR="~/data/GPUParticles"  # Base directory on the remote cluster
 LOCAL_OUTPUT_DIR="./output"       # Local directory relative to the repository
 

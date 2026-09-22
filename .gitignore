@@ -4,3 +4,4 @@ local/
 build/
 build/*
 output/
+__pycache__/
