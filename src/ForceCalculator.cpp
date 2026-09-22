@@ -7,6 +7,15 @@
 #include <cmath>
 #include <cstdint>
 
+namespace {
+// WCA's internal LJ length parameter, chosen so the LJ minimum (the standard
+// WCA cutoff, 2^(1/6)*sigma_w) lands exactly at r = sigma, the cutoff both
+// potentials now share.
+inline double wcaLJSigma(double sigma) {
+    return sigma * std::pow(2.0, -1.0 / 6.0);
+}
+}  // namespace
+
 // =============================================================================
 // Pair-potential primitives
 // -----------------------------------------------------------------------------
@@ -53,25 +62,24 @@ double ForceCalculator::softSphereEnergy(double r2, double epsilon, double sigma
 double ForceCalculator::f0ForOverlap(PotentialType type, double delta,
                                      double epsilon, double sigma) {
     if (delta <= 0.0) return 0.0;             // unphysical / singular
-    const double r      = delta * sigma;
-    const double r2     = r * r;
-    const double sigma2 = sigma * sigma;
+    const double r  = delta * sigma;
+    const double r2 = r * r;
 
-    // Cutoff differs per potential; outside it the force is identically zero,
-    // which means the active drive needed to maintain contact is zero too —
-    // i.e. delta beyond the cutoff is the passive limit, f0 = 0.
-    const double r_cut = (type == PotentialType::WCA)
-                             ? std::pow(2.0, 1.0 / 6.0) * sigma
-                             : sigma;
-    if (r >= r_cut) return 0.0;
+    // sigma is the cutoff for both potentials; outside it the force is
+    // identically zero, which means the active drive needed to maintain
+    // contact is zero too — i.e. delta >= 1 is the passive limit, f0 = 0.
+    if (r >= sigma) return 0.0;
 
     double f_over_r2 = 0.0;
     switch (type) {
-        case PotentialType::WCA:
-            wcaForce(r2, epsilon, sigma, sigma2, f_over_r2);
+        case PotentialType::WCA: {
+            const double sigma_w  = wcaLJSigma(sigma);
+            const double sigma_w2 = sigma_w * sigma_w;
+            wcaForce(r2, epsilon, sigma_w, sigma_w2, f_over_r2);
             break;
+        }
         case PotentialType::SoftSphere:
-            softSphereForce(r2, epsilon, sigma, sigma2, f_over_r2);
+            softSphereForce(r2, epsilon, sigma, sigma * sigma, f_over_r2);
             break;
     }
     // The pair fns return F/r (so callers can write force -= (F/r) * dx).
@@ -95,7 +103,7 @@ void ForceCalculator::installPotentialFns() {
         case PotentialType::WCA:
             pair_force_fn_  = &ForceCalculator::wcaForce;
             pair_energy_fn_ = &ForceCalculator::wcaEnergy;
-            r_cut_factor_   = std::pow(2.0, 1.0 / 6.0);
+            r_cut_factor_   = 1.0;
             break;
         case PotentialType::SoftSphere:
             pair_force_fn_  = &ForceCalculator::softSphereForce;
@@ -108,7 +116,16 @@ void ForceCalculator::installPotentialFns() {
 void ForceCalculator::recomputeCachedConstants() {
     r_cut_  = r_cut_factor_ * sigma_;
     r_cut2_ = r_cut_ * r_cut_;
-    sigma2_ = sigma_ * sigma_;
+
+    // WCA's pair functions consume the internal LJ length sigma_w (not the
+    // cutoff sigma_) — see wcaLJSigma(). SoftSphere uses sigma_ directly
+    // (its pair functions ignore sigma2_ anyway).
+    if (potential_type_ == PotentialType::WCA) {
+        const double sigma_w = wcaLJSigma(sigma_);
+        sigma2_ = sigma_w * sigma_w;
+    } else {
+        sigma2_ = sigma_ * sigma_;
+    }
 }
 
 void ForceCalculator::setEpsilon(double eps) {

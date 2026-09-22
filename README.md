@@ -13,8 +13,12 @@ memory access for free.
 ## Physics
 
 - **Interaction (WCA):**
-  $$U(r) = 4\varepsilon\left[\left(\tfrac{\sigma}{r}\right)^{12} - \left(\tfrac{\sigma}{r}\right)^6\right] + \varepsilon, \quad r < 2^{1/6}\sigma$$
-  and `U(r) = 0` beyond the cutoff. Force is continuous at `r_cut`.
+  $$U(r) = 4\varepsilon\left[\left(\tfrac{\sigma_w}{r}\right)^{12} - \left(\tfrac{\sigma_w}{r}\right)^6\right] + \varepsilon, \quad r < \sigma, \qquad \sigma_w \equiv \sigma / 2^{1/6}$$
+  and `U(r) = 0` beyond the cutoff. Force is continuous at `r_cut = σ`. `σ_w` is
+  the internal Lennard-Jones length parameter; it's chosen so the LJ minimum
+  (the standard WCA cutoff, `2^(1/6)·σ_w`) lands exactly at `r = σ`. This makes
+  `σ` the cutoff distance for WCA, matching the soft-sphere convention below —
+  so packing fraction (next bullet) means the same thing for both potentials.
 
 - **Dynamics (overdamped Langevin / Brownian dynamics):**
   $$\dot{r}_i = \frac{D}{k_BT}\,F_i + \sqrt{2D}\,\eta_i(t),
@@ -53,9 +57,10 @@ where `r*` is the steady-state center-to-center separation. We define the
 
 $$\delta \;\equiv\; \frac{r^*}{\sigma}.$$
 
-(δ < 1 means compression below the hard-core diameter; δ ≥ cutoff means no
-contact and the active drive does no work.) Inverting the force balance for
-each potential:
+(δ < 1 means compression below the hard-core diameter; δ ≥ 1 means no contact
+and the active drive does no work — `σ` is the cutoff for both potentials, so
+this range is the same for both.) Inverting the force balance for each
+potential:
 
 ### Soft sphere (harmonic)
 
@@ -71,16 +76,22 @@ Linear: a 1% compression below contact (δ = 0.99) needs `f_0 = 0.01\,\varepsilo
 
 ### WCA
 
-$$U(r) = 4\varepsilon\!\left[\!\left(\tfrac{\sigma}{r}\right)^{12} - \left(\tfrac{\sigma}{r}\right)^{6}\!\right] + \varepsilon, \quad
-  F(r) = \frac{24\varepsilon}{r}\!\left(\tfrac{\sigma}{r}\right)^{6}\!\left[2\!\left(\tfrac{\sigma}{r}\right)^{6} - 1\right].$$
+With `σ_w = σ/2^{1/6}` the internal LJ length parameter (see the WCA entry
+under Physics above):
 
-Force balance gives the closed form
+$$U(r) = 4\varepsilon\!\left[\!\left(\tfrac{\sigma_w}{r}\right)^{12} - \left(\tfrac{\sigma_w}{r}\right)^{6}\!\right] + \varepsilon, \quad
+  F(r) = \frac{24\varepsilon}{r}\!\left(\tfrac{\sigma_w}{r}\right)^{6}\!\left[2\!\left(\tfrac{\sigma_w}{r}\right)^{6} - 1\right].$$
 
-$$\boxed{\;f_0 \;=\; \frac{24\varepsilon}{\sigma}\,\delta^{-7}\!\left(2\,\delta^{-6} - 1\right), \quad 0 < \delta < 2^{1/6}.\;}$$
+Substituting `r* = δσ` and `σ_w = σ·2^{-1/6}`, the force balance gives the
+closed form
+
+$$\boxed{\;f_0 \;=\; \frac{12\varepsilon}{\sigma}\,\delta^{-7}\!\left(\delta^{-6} - 1\right), \quad 0 < \delta < 1.\;}$$
 
 There is no closed form for `\delta(f_0)`, but the relation is monotone on
-`(0, 2^{1/6})` and trivial to invert numerically. WCA is far stiffer than the
-harmonic soft sphere: at contact (δ = 1) already `f_0 = 24\,\varepsilon/\sigma`.
+`(0, 1)` and trivial to invert numerically. WCA is far stiffer than the
+harmonic soft sphere near contact: at `δ = 2^{-1/6} ≈ 0.891` (i.e. `r* = σ_w`)
+already `f_0 = 24·2^{1/6}\,\varepsilon/\sigma ≈ 26.9\,\varepsilon/\sigma`; like
+the soft sphere, `f_0 → 0` continuously as `δ → 1` (the shared cutoff).
 
 ### Validity of the force-balance picture
 
@@ -215,7 +226,7 @@ There are 129 tests across seven files in `test/`:
 |---|---|
 | `test_box.cpp` | `Box::minimumImage`, `Box::wrap`, construction, round-trip consistency |
 | `test_system.cpp` | SoA storage, `resize`, `zeroForces`, raw-pointer / vector-data consistency |
-| `test_force_calculator.cpp` | WCA cutoff, exact force at σ, zero force beyond cutoff, PBC pairs, `computeEnergy`, cell-list vs brute-force force equivalence (tolerance 1e-12) |
+| `test_force_calculator.cpp` | WCA cutoff, exact force at σ_w, zero force at/beyond cutoff σ, PBC pairs, `computeEnergy`, cell-list vs brute-force force equivalence (tolerance 1e-12) |
 | `test_cell_list.cpp` | Grid geometry, small-box fallback, `needsRebuild` lifecycle, PBC-aware drift check, complete neighbor-list correctness vs brute force, cross-boundary neighbor detection |
 | `test_integrator.cpp` | Cached constants, setter invalidation, drift magnitude, positions stay wrapped, MSD ≈ 4Dt statistical check |
 | `test_config.cpp` | All field defaults, all overrides, every validation error that should throw |

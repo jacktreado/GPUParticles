@@ -550,7 +550,7 @@ int main(int /*argc*/, char** /*argv*/) {
         ImGui::TextDisabled("(sigma = epsilon = gamma = 1)");
 
         if (ImGui::SliderFloat("delta = r* / sigma  (overlap)",
-                                &params.delta, 0.50f, 1.122f, "%.4f"))
+                                &params.delta, 0.50f, 1.0f, "%.4f"))
             needs_integ_update = true;
         if (ImGui::SliderFloat("Pe = f0 tau_theta / (gamma sigma)",
                                 &params.Pe, 0.01f, 1000.0f, "%.4f",

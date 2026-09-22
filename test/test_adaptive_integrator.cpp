@@ -17,8 +17,9 @@
 // (kT does not enter the deterministic drift; it only sets noise amplitude
 // for the stochastic Euler-Maruyama integrator, which lives in Integrator.)
 // All tests use sigma = epsilon = 1.0 (WCA defaults) unless stated otherwise.
-// WCA cutoff: r_cut = 2^(1/6) ≈ 1.1225.  At r = sigma = 1.0 the pair force
-// magnitude per unit separation is f_over_r2 = 24 * eps * (2 - 1) / r^2 = 24.
+// WCA cutoff: r_cut = sigma = 1.0. At r = sigma_w = sigma * 2^(-1/6) (the
+// internal LJ length, where sr6 = 1) the pair force magnitude is
+// F(r) = 24 * eps / r = 24 * 2^(1/6) ≈ 26.939.
 // =============================================================================
 
 // ---- Constructor / getters --------------------------------------------------
@@ -87,7 +88,7 @@ TEST(AdaptiveIntegratorTest, ZeroForceReturnsAtLeastOneSubStep) {
 
 TEST(AdaptiveIntegratorTest, WCARepulsionDriftDirection) {
     const double L     = 100.0;
-    const double d     = 1.0;
+    const double d     = std::pow(2.0, -1.0 / 6.0);   // sigma_w
     const double T     = 1.0e-6;
     const double gamma = 1.0;
     const double mu    = 1.0 / gamma;
@@ -113,7 +114,7 @@ TEST(AdaptiveIntegratorTest, WCARepulsionDriftDirection) {
     EXPECT_LT(dy1, 0.0) << "particle 1 should be pushed downward";
     EXPECT_NEAR(sys.getX(0), x0_before, 1.0e-12);
 
-    const double expected_dy0 = mu * 24.0 * T;
+    const double expected_dy0 = mu * (24.0 * std::pow(2.0, 1.0 / 6.0)) * T;
     EXPECT_NEAR(dy0, expected_dy0, 1.0e-2 * std::abs(expected_dy0));
 }
 
@@ -174,7 +175,7 @@ TEST(AdaptiveIntegratorTest, TighterToleranceTakesMoreOrEqualSubSteps) {
 
 TEST(AdaptiveIntegratorTest, MoreAccurateThanEulerForSameDt) {
     const double L     = 100.0;
-    const double d     = 1.0;
+    const double d     = 0.9;   // inside the r_cut = 1.0 cutoff
     const double T     = 5.0e-4;
     const double gamma = 1.0;
     const double mu    = 1.0 / gamma;
@@ -290,7 +291,7 @@ TEST(AdaptiveIntegratorTest, EnergyDecreasesForOverlappingParticles) {
 TEST(AdaptiveIntegratorTest, NoInteractionBeyondCutoff) {
     const double L     = 100.0;
     const double sigma = 1.0;
-    const double r_cut = std::pow(2.0, 1.0 / 6.0) * sigma;
+    const double r_cut = sigma;   // WCA cutoff is now sigma itself
     const double d     = r_cut + 0.5;
     const double T     = 0.01;
 
@@ -331,8 +332,8 @@ TEST(AdaptiveIntegratorTest, StepReturnsPositiveDt) {
 // step() must actually advance the system when there's a non-zero force.
 TEST(AdaptiveIntegratorTest, StepAdvancesState) {
     System sys(2);
-    sys.setPosition(0, 50.0, 50.5);
-    sys.setPosition(1, 50.0, 49.5);   // separation = 1 = sigma
+    sys.setPosition(0, 50.0, 50.45);
+    sys.setPosition(1, 50.0, 49.55);   // separation = 0.9, inside r_cut = 1.0
     Box             box(100.0);
     ForceCalculator fc(1.0, 1.0);
     AdaptiveIntegrator ai(1.0, 1.0e-8, 1.0e-8, 1.0e-5);

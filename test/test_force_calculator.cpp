@@ -32,21 +32,18 @@ TEST(ForceCalculatorTest, DefaultConstructorCutoffIsZero) {
 
 TEST(ForceCalculatorTest, ParametricCutoffSigmaOne) {
     ForceCalculator fc(1.0, 1.0);
-    const double expected = std::pow(2.0, 1.0 / 6.0);
-    EXPECT_DOUBLE_EQ(fc.getCutoff(), expected);
+    EXPECT_DOUBLE_EQ(fc.getCutoff(), 1.0);
 }
 
 TEST(ForceCalculatorTest, CutoffScalesWithSigma) {
     ForceCalculator fc(1.0, 2.0);
-    const double expected = std::pow(2.0, 1.0 / 6.0) * 2.0;
-    EXPECT_DOUBLE_EQ(fc.getCutoff(), expected);
+    EXPECT_DOUBLE_EQ(fc.getCutoff(), 2.0);
 }
 
 TEST(ForceCalculatorTest, SetSigmaUpdatesCutoff) {
     ForceCalculator fc;
     fc.setSigma(3.0);
-    const double expected = std::pow(2.0, 1.0 / 6.0) * 3.0;
-    EXPECT_DOUBLE_EQ(fc.getCutoff(), expected);
+    EXPECT_DOUBLE_EQ(fc.getCutoff(), 3.0);
 }
 
 TEST(ForceCalculatorTest, CutoffSquaredConsistent) {
@@ -57,21 +54,38 @@ TEST(ForceCalculatorTest, CutoffSquaredConsistent) {
 
 // ---- Force magnitude at known separations (sigma = 1, eps = 1) -------------
 
-// At r = sigma: F(r)/r = 24/r^2 * (sr6 * (2*sr6 - 1)) with sr6=1
-//   => f_over_r2 = 24/1 * (2-1) = 24
-//   Force on particle 0 (j=1 is at +dx): fxi -= 24 * dx = -24
-TEST(ForceCalculatorTest, ForceAtSigmaSeparation) {
+// At r = sigma_w = sigma * 2^(-1/6) (the internal LJ length): sr6 = 1, so
+// F(r)/r = 24/r^2 * (sr6 * (2*sr6 - 1)) = 24/r^2, and F(r) = 24/r = 24*2^(1/6)
+// (sr6=1 does NOT make F(r) simply 24 — that only held in the old convention
+// where sigma_w's numeric value happened to be 1.0).
+//   Force on particle 0 (j=1 is at +dx): fxi -= (24/r^2) * dx = -24/r
+TEST(ForceCalculatorTest, ForceAtSigmaWSeparation) {
     const double L = 20.0;           // large box — no PBC effect
+    const double sigma_w = std::pow(2.0, -1.0 / 6.0);
+    System s = makeTwoParticles(5.0, 5.0, 5.0 + sigma_w, 5.0);
+    Box box(L);
+    ForceCalculator fc(1.0, 1.0);
+
+    fc.compute(s, box);
+
+    const double expected = 24.0 * std::pow(2.0, 1.0 / 6.0);   // = 24/sigma_w
+    EXPECT_NEAR(s.getFx(0), -expected, 1e-12);   // pushed left (away from particle 1)
+    EXPECT_DOUBLE_EQ(s.getFy(0), 0.0);
+    EXPECT_NEAR(s.getFx(1), expected, 1e-12);    // pushed right (away from particle 0)
+    EXPECT_DOUBLE_EQ(s.getFy(1), 0.0);
+}
+
+// At the cutoff, r = sigma: force is exactly zero.
+TEST(ForceCalculatorTest, ForceAtCutoffIsZero) {
+    const double L = 20.0;
     System s = makeTwoParticles(5.0, 5.0, 6.0, 5.0);   // separation = 1 = sigma
     Box box(L);
     ForceCalculator fc(1.0, 1.0);
 
     fc.compute(s, box);
 
-    EXPECT_DOUBLE_EQ(s.getFx(0), -24.0);    // pushed left (away from particle 1)
-    EXPECT_DOUBLE_EQ(s.getFy(0),  0.0);
-    EXPECT_DOUBLE_EQ(s.getFx(1),  24.0);    // pushed right (away from particle 0)
-    EXPECT_DOUBLE_EQ(s.getFy(1),  0.0);
+    EXPECT_DOUBLE_EQ(s.getFx(0), 0.0);
+    EXPECT_DOUBLE_EQ(s.getFx(1), 0.0);
 }
 
 // Newton's 3rd law: forces are equal and opposite (though computed redundantly).
@@ -115,18 +129,21 @@ TEST(ForceCalculatorTest, ForceIsRepulsive) {
     EXPECT_GT(s.getFx(1), 0.0);
 }
 
-// Force in y for a vertical pair.
+// Force in y for a vertical pair, at separation = sigma_w (see
+// ForceAtSigmaWSeparation for why the magnitude is 24*2^(1/6), not 24).
 TEST(ForceCalculatorTest, VerticalPairForce) {
-    System s = makeTwoParticles(0.0, 0.0, 0.0, 1.0);   // separation = sigma along y
+    const double sigma_w = std::pow(2.0, -1.0 / 6.0);
+    System s = makeTwoParticles(0.0, 0.0, 0.0, sigma_w);
     Box box(20.0);
     ForceCalculator fc(1.0, 1.0);
 
     fc.compute(s, box);
 
+    const double expected = 24.0 * std::pow(2.0, 1.0 / 6.0);
     EXPECT_DOUBLE_EQ(s.getFx(0), 0.0);
-    EXPECT_DOUBLE_EQ(s.getFy(0), -24.0);
+    EXPECT_NEAR(s.getFy(0), -expected, 1e-12);
     EXPECT_DOUBLE_EQ(s.getFx(1), 0.0);
-    EXPECT_DOUBLE_EQ(s.getFy(1),  24.0);
+    EXPECT_NEAR(s.getFy(1), expected, 1e-12);
 }
 
 // compute() resets forces before evaluating.
@@ -151,7 +168,7 @@ TEST(ForceCalculatorTest, ComputeResetsForces) {
 // Particle at 0.1 and particle at L-0.1 are 0.2 apart through PBC.
 TEST(ForceCalculatorTest, ForceAcrossPeriodicBoundary) {
     const double L  = 10.0;
-    const double g  = 0.1;    // 2*g = 0.2 separation, well within r_cut~1.12
+    const double g  = 0.1;    // 2*g = 0.2 separation, well within r_cut = 1.0
     System s = makeTwoParticles(g, 5.0, L - g, 5.0);
     Box box(L);
     ForceCalculator fc(1.0, 1.0);
@@ -167,15 +184,25 @@ TEST(ForceCalculatorTest, ForceAcrossPeriodicBoundary) {
 
 // ---- computeEnergy ----------------------------------------------------------
 
-// Energy between two particles at r = sigma is eps = 1.
-// WCA: U(sigma) = 4*(1-1)+1 = 1.
-TEST(ForceCalculatorTest, EnergyAtSigmaSeparation) {
-    System s = makeTwoParticles(0.0, 0.0, 1.0, 0.0);
+// Energy between two particles at r = sigma_w is eps = 1.
+// WCA: U(sigma_w) = 4*(1-1)+1 = 1.
+TEST(ForceCalculatorTest, EnergyAtSigmaWSeparation) {
+    const double sigma_w = std::pow(2.0, -1.0 / 6.0);
+    System s = makeTwoParticles(0.0, 0.0, sigma_w, 0.0);
     Box box(20.0);
     ForceCalculator fc(1.0, 1.0);
 
     const double U = fc.computeEnergy(s, box);
     EXPECT_DOUBLE_EQ(U, 1.0);
+}
+
+// At the cutoff, r = sigma: energy is exactly zero.
+TEST(ForceCalculatorTest, EnergyAtCutoffIsZero) {
+    System s = makeTwoParticles(0.0, 0.0, 1.0, 0.0);
+    Box box(20.0);
+    ForceCalculator fc(1.0, 1.0);
+
+    EXPECT_DOUBLE_EQ(fc.computeEnergy(s, box), 0.0);
 }
 
 TEST(ForceCalculatorTest, EnergyZeroBeyondCutoff) {
@@ -197,10 +224,14 @@ TEST(ForceCalculatorTest, EnergyIsNonNegative) {
 }
 
 TEST(ForceCalculatorTest, EnergyCountedOncePerPair) {
-    // Four particles, all far apart except particles 0-1 which are at separation 1.
+    // Four particles, all far apart except particles 0-1, which are at
+    // separation sigma_w (U(sigma_w) = eps = 1 regardless of sigma_w's
+    // numeric value, since sr6=1 there — unlike the force, U has no extra
+    // 1/r factor).
+    const double sigma_w = std::pow(2.0, -1.0 / 6.0);
     System s(4);
     s.setPosition(0,  0.0, 0.0);
-    s.setPosition(1,  1.0, 0.0);
+    s.setPosition(1,  sigma_w, 0.0);
     s.setPosition(2, 10.0, 0.0);
     s.setPosition(3, 15.0, 0.0);
     Box box(100.0);
@@ -296,8 +327,7 @@ TEST(ForceCalculatorTest, SwitchPotentialBackToWCARestoresCutoff) {
     ForceCalculator fc(1.0, 2.0);
     fc.setPotentialType(PotentialType::SoftSphere);
     fc.setPotentialType(PotentialType::WCA);
-    const double expected = std::pow(2.0, 1.0 / 6.0) * 2.0;
-    EXPECT_DOUBLE_EQ(fc.getCutoff(), expected);
+    EXPECT_DOUBLE_EQ(fc.getCutoff(), 2.0);
 }
 
 TEST(ForceCalculatorTest, ConstructWithSoftSphereSetsSigmaCutoff) {
@@ -472,30 +502,32 @@ TEST(ForceCalculatorTest, F0ForOverlapPassiveLimitSoftSphere) {
 }
 
 TEST(ForceCalculatorTest, F0ForOverlapPassiveLimitWCA) {
-    const double cutoff = std::pow(2.0, 1.0 / 6.0);
-    EXPECT_DOUBLE_EQ(
-        ForceCalculator::f0ForOverlap(PotentialType::WCA, cutoff, 1.0, 1.0),
-        0.0);
-    EXPECT_DOUBLE_EQ(
-        ForceCalculator::f0ForOverlap(PotentialType::WCA, cutoff + 0.01, 1.0, 1.0),
-        0.0);
-}
-
-// At delta = 1 (r = sigma), WCA force is 24 eps/sigma exactly.
-TEST(ForceCalculatorTest, F0ForOverlapWCAAtSigma) {
     EXPECT_DOUBLE_EQ(
         ForceCalculator::f0ForOverlap(PotentialType::WCA, 1.0, 1.0, 1.0),
-        24.0);
+        0.0);
     EXPECT_DOUBLE_EQ(
-        ForceCalculator::f0ForOverlap(PotentialType::WCA, 1.0, 1.0, 2.0),
-        12.0);   // 24 * eps / sigma = 24 / 2
+        ForceCalculator::f0ForOverlap(PotentialType::WCA, 1.01, 1.0, 1.0),
+        0.0);
 }
 
-// Closed-form sanity: f0_WCA(delta) = 24 * delta^-7 * (2 delta^-6 - 1).
+// At delta = 2^(-1/6) (r = sigma_w, the internal LJ length — this was the
+// old formula's delta=1 reference point), WCA force is 24*2^(1/6)*eps/sigma.
+TEST(ForceCalculatorTest, F0ForOverlapWCAAtSigmaW) {
+    const double delta    = std::pow(2.0, -1.0 / 6.0);
+    const double expected = 24.0 * std::pow(2.0, 1.0 / 6.0);
+    EXPECT_NEAR(
+        ForceCalculator::f0ForOverlap(PotentialType::WCA, delta, 1.0, 1.0),
+        expected, 1e-12);
+    EXPECT_NEAR(
+        ForceCalculator::f0ForOverlap(PotentialType::WCA, delta, 1.0, 2.0),
+        expected / 2.0, 1e-12);   // eps/sigma halves when sigma doubles
+}
+
+// Closed-form sanity: f0_WCA(delta) = 12 * delta^-7 * (delta^-6 - 1).
 TEST(ForceCalculatorTest, F0ForOverlapWCAClosedForm) {
     const double delta = 0.95;
-    const double expected = 24.0 * std::pow(delta, -7.0) *
-                            (2.0 * std::pow(delta, -6.0) - 1.0);
+    const double expected = 12.0 * std::pow(delta, -7.0) *
+                            (std::pow(delta, -6.0) - 1.0);
     EXPECT_NEAR(
         ForceCalculator::f0ForOverlap(PotentialType::WCA, delta, 1.0, 1.0),
         expected, 1e-12);
@@ -519,7 +551,7 @@ TEST(ForceCalculatorTest, F0ForOverlapMatchesPairForceSoftSphere) {
 }
 
 TEST(ForceCalculatorTest, F0ForOverlapMatchesPairForceWCA) {
-    const double delta = 1.05;
+    const double delta = 0.85;
     const double f0 = ForceCalculator::f0ForOverlap(
         PotentialType::WCA, delta, 1.0, 1.0);
 

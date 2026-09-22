@@ -125,8 +125,8 @@ TEST(SimulationTest, RepulsiveForcesDecreaseEnergyOverTime) {
     // steps with large D (quick relaxation) should decrease the WCA energy.
     const double L = 20.0;
     System sys(2);
-    sys.setPosition(0, 9.5, 10.0);   // separation 1.0 < r_cut ~ 1.12 in x
-    sys.setPosition(1, 10.5, 10.0);
+    sys.setPosition(0, 9.55, 10.0);   // separation 0.9 < r_cut = 1.0 in x
+    sys.setPosition(1, 10.45, 10.0);
     Box box(L);
     ForceCalculator forces(1.0, 1.0);
 
@@ -431,13 +431,15 @@ TEST_F(TrajectoryWriterTest, ForcesDatasetEqualsForceCalculatorOutput) {
     // End-to-end: place two particles inside the WCA cutoff, run
     // ForceCalculator::compute, write the frame, and verify the dataset
     // matches both (a) what System reports and (b) the analytic pair force.
-    // Two equal-and-opposite particles at separation = sigma:
-    //   F_radial / r = 24 eps / r^2 * sr6 * (2 sr6 - 1) = 24
-    //   so particle 0 (left) gets fx = -24, particle 1 (right) gets fx = +24.
+    // Two equal-and-opposite particles at separation = sigma_w (the internal
+    // LJ length, where sr6=1): F_radial = 24 eps / r = 24 * 2^(1/6),
+    // so particle 0 (left) gets fx = -24*2^(1/6), particle 1 (right) the
+    // opposite.
     const std::size_t N = 2;
+    const double sigma_w = std::pow(2.0, -1.0 / 6.0);
     System sys(N);
     sys.setPosition(0, 5.0, 5.0);
-    sys.setPosition(1, 6.0, 5.0);   // dx = +1 = sigma
+    sys.setPosition(1, 5.0 + sigma_w, 5.0);
     Box box(20.0);                  // big enough to ignore PBC
 
     ForceCalculator fc(1.0, 1.0);
@@ -460,10 +462,11 @@ TEST_F(TrajectoryWriterTest, ForcesDatasetEqualsForceCalculatorOutput) {
     EXPECT_DOUBLE_EQ(buf[2], sys.getFx(1));
     EXPECT_DOUBLE_EQ(buf[3], sys.getFy(1));
 
-    // Matches the analytic WCA pair force at r = sigma.
-    EXPECT_DOUBLE_EQ(buf[0], -24.0);
+    // Matches the analytic WCA pair force at r = sigma_w.
+    const double expected = 24.0 * std::pow(2.0, 1.0 / 6.0);
+    EXPECT_NEAR(buf[0], -expected, 1e-12);
     EXPECT_DOUBLE_EQ(buf[1],   0.0);
-    EXPECT_DOUBLE_EQ(buf[2],  24.0);
+    EXPECT_NEAR(buf[2],  expected, 1e-12);
     EXPECT_DOUBLE_EQ(buf[3],   0.0);
 
     // Newton's third law: sum of pair forces is zero.

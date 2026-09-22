@@ -11,10 +11,17 @@ class CellList;
 // -----------------------------------------------------------------------------
 // Tag for the pluggable pair potential. Each enumerator maps to a pair of
 // static functions on ForceCalculator (force + energy) and a fixed cutoff
-// factor (cutoff = factor * sigma).
+// factor (cutoff = factor * sigma). Both potentials share the convention that
+// `sigma` IS the cutoff distance — the separation at which U becomes (and
+// stays) zero — so packing fraction phi = N*pi*sigma^2/(4*L^2) means the same
+// thing (fraction of the box covered by the non-zero-potential-energy disks)
+// for both.
 //
-//   WCA         purely-repulsive Lennard-Jones, r_cut = 2^(1/6) * sigma
-//                 U(r) = 4 eps [(sigma/r)^12 - (sigma/r)^6] + eps
+//   WCA         purely-repulsive Lennard-Jones, r_cut = sigma
+//                 U(r) = 4 eps [(sigma_w/r)^12 - (sigma_w/r)^6] + eps
+//                 where sigma_w = sigma / 2^(1/6) is the internal LJ length
+//                 parameter (chosen so the LJ minimum — the standard WCA
+//                 cutoff, 2^(1/6)*sigma_w — lands exactly at r = sigma).
 //   SoftSphere  harmonic soft sphere,           r_cut = sigma
 //                 U(r) = (eps/2) * (1 - r/sigma)^2     for r < sigma
 // =============================================================================
@@ -95,10 +102,12 @@ public:
     // Active force needed to hold a steady-state pair contact at separation
     // r* = delta * sigma, from the force balance F_pot(r*) = f0 (two ABPs
     // pressing into each other with persistent self-propulsion). Returns 0
-    // when delta is at or beyond the cutoff (passive limit).
+    // when delta is at or beyond the cutoff (passive limit). sigma is the
+    // cutoff for both potentials, so delta has the same valid range, (0, 1),
+    // for both.
     //
     // Closed forms with epsilon = sigma = 1 (the conventional units):
-    //   WCA         f0 = 24 * delta^-7 * (2 delta^-6 - 1)   for 0 < delta < 2^(1/6)
+    //   WCA         f0 = 12 * delta^-7 * (delta^-6 - 1)     for 0 < delta < 1
     //   SoftSphere  f0 = 1 - delta                          for 0 < delta < 1
     //
     // See README "Typical pair overlap" for the derivation.
@@ -115,7 +124,7 @@ private:
     // factor matches the default function pointers so that a later setSigma()
     // produces the WCA cutoff without needing to call setPotentialType first.
     PotentialType potential_type_ = PotentialType::WCA;
-    double        r_cut_factor_   = std::pow(2.0, 1.0 / 6.0);
+    double        r_cut_factor_   = 1.0;
     PairForceFn   pair_force_fn_  = &ForceCalculator::wcaForce;
     PairEnergyFn  pair_energy_fn_ = &ForceCalculator::wcaEnergy;
 
