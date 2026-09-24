@@ -109,6 +109,11 @@ def _make_parser() -> argparse.ArgumentParser:
         default=None,
         help="Output file name. Default: '<input_stem>_<color_by>.mp4'.",
     )
+    p.add_argument(
+        "--extra-tag",
+        default=None,
+        help="Extra tag to append to the output filename.",
+    )
 
     p.add_argument("--start-frame", type=int, default=None, help="First frame index (default: 0).")
     p.add_argument("--end-frame", type=int, default=None, help="Last frame index, inclusive (default: last frame).")
@@ -193,6 +198,8 @@ def _resolve_output_path(args: argparse.Namespace) -> Path:
 
     if args.filename is None:
         stem = Path(args.h5_path).stem
+        if args.extra_tag is not None:
+            stem += f"_{args.extra_tag}"
         filename = f"{stem}_{args.color_by}.mp4"
     else:
         filename = args.filename
